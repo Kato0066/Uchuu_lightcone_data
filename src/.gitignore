@@ -1,2 +1,4 @@
 make_lightcone
+*.o
+*.txt
 *~
