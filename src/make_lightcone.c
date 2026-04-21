@@ -198,6 +198,12 @@ int main(int argc, char **argv)
     read_gadget_ptcl(filename, ptcl);
 
     printf("%s : npart = %d\n", filename, npart);
+    if (npart > 0) {
+      printf("  ptcl[0] r = (%g, %g, %g)\n",
+             ptcl[0].r[0],
+             ptcl[0].r[1],
+             ptcl[0].r[2]);
+    }
 
     free(ptcl);
   }
