@@ -1,0 +1,7 @@
+# Uchuu_lightcone_data
+
+## build
+make
+
+## run
+./make_lightcone snapdir_04?/U2000_04?_samp0p005.gad
