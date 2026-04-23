@@ -11,6 +11,9 @@ const double Gadget_UnitMass_in_Msun = 1.0e10;          // 1e10 Msun
 const double Gadget_UnitVelocity_in_cm_per_s = 1e5;     //  1 km/sec
 
 #define IO_CACHE_SIZE 2097152
+#define ZMIN 0.0
+#define ZMAX 0.1
+
 
 typedef struct Particle{
   double mass;
@@ -173,40 +176,76 @@ int read_gadget_ptcl(const char *filename, Particle *ptcl)
 
 int main(int argc, char **argv)
 {
+  FILE *fout;
+  Particle *ptcl;
+  char filename[256];
+  int32_t i;
+  long long total_selected = 0;
+
   if (argc != 2) {
     fprintf(stderr, "Usage: %s base_filename\n", argv[0]);
     return 1;
   }
 
-  Particle *ptcl;
+  fout = fopen("zslice_xy.dat", "w");
+  if (fout == NULL) {
+    fprintf(stderr, "cannot open zslice_xy.dat\n");
+    return 1;
+  }
 
-  char filename[256];
 
-  for (int32_t i = 0; i < 200; i++) {
+  for (i = 0; i < 200; i++) {
+    int32_t npart;
+    int32_t j;
+    int32_t nsel = 0;
+
     sprintf(filename, "%s.%d", argv[1], i);
 
-    int32_t npart = get_gadget_npart(filename);
-
+    npart = get_gadget_npart(filename);
     if (npart < 0) break;
 
     ptcl = (Particle *) malloc(sizeof(Particle)*npart);
     if (ptcl == NULL) {
       fprintf(stderr, "malloc failed for %s\n", filename);
+      fclose(fout);
       return 1;
     }
 
-    read_gadget_ptcl(filename, ptcl);
-
-    printf("%s : npart = %d\n", filename, npart);
-    if (npart > 0) {
-      printf("  ptcl[0] r = (%g, %g, %g)\n",
-             ptcl[0].r[0],
-             ptcl[0].r[1],
-             ptcl[0].r[2]);
+    if (read_gadget_ptcl(filename, ptcl) < 0) {
+      free(ptcl);
+      fclose(fout);
+      return 1;
     }
+
+    /*printf("%s : npart = %d\n", filename, npart);
+      if (npart > 0) {
+      printf("  ptcl[0] r = (%g, %g, %g)\n",
+      ptcl[0].r[0],
+      ptcl[0].r[1],
+      ptcl[0].r[2]);
+      }
+    */
+
+    for (j = 0; j < npart; j++) {
+      if (ptcl[j].r[2] >= ZMIN && ptcl[j].r[2] <= ZMAX) {
+        fprintf(fout, "%.10g %.10g %.10g\n",
+                ptcl[j].r[0],
+                ptcl[j].r[1],
+                ptcl[j].r[2]);
+        nsel++;
+      }
+    }
+
+    total_selected += nsel;
+    printf("  selected in %.1f <= z <= %.1f : %d\n", ZMIN, ZMAX, nsel);
 
     free(ptcl);
   }
+
+  fclose(fout);
+
+  printf("total selected particles = %lld\n", total_selected);
+  printf("wrote zslice_xy.dat\n");
 
   return 0;
 }

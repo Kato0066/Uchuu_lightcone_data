@@ -18,3 +18,6 @@ clean:
 
 distclean: clean
 	rm -rf *~
+
+run:
+	./make_lightcone ../../snapdir_050/U2000_050_samp0p005.gad > result.txt
