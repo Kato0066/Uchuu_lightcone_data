@@ -124,13 +124,6 @@ void calc_mesh_density(double *mesh_density, Particle *ptcl,
 {
   int p;
 
-  for (int i = 0; i < ngrid; i++) {
-    for (int j = 0; j < ngrid; j++) {
-      for (int k = 0; k < ngrid; k++) {
-        RHO(i, j, k) = 0.e0;
-      }
-    }
-  }
 
   for (p = 0; p < npart; p++) {
     double xt1;
@@ -249,29 +242,43 @@ int main(int argc, char **argv)
 
     int64_t npart_total = 0;
 
-    for (int32_t i = 0; i < 200; i++) {
+  */
+
+  int datasize = NGRID * NGRID * NGRID;
+  mesh_density = (double *)malloc(sizeof(double) * datasize);
+  if (mesh_density == NULL) {
+    fprintf(stderr, "malloc failed for mesh_density\n");
+    return 1;
+  }
+  for (int i = 0; i < datasize; i++) {
+    mesh_density[i] = 0.e0;
+  }
+
+  for (int32_t i = 0; i < 200; i++) {
     int32_t npart;
 
     fprintf(stdout, "# Reading %d-th file out of 200.\n", i);
 
     sprintf(filename, "%s.%d", argv[1], i);
-  */
+    /*
+      npart_total += npart;
+      if (npart < 0) break;
+    */
 
-  int32_t npart;
-  npart = get_gadget_npart(argv[1]/*filename*/);
-
-  /*
-    npart_total += npart;
+    npart = get_gadget_npart(filename);
     if (npart < 0) break;
-  */
 
-  ptcl = (Particle *) malloc(sizeof(Particle)*npart);
-  if (ptcl == NULL) {
-    fprintf(stderr, "malloc failed for %s\n", filename);
-    return 1;
+    printf("%s : npart = %d\n", filename, npart);
+
+    ptcl = (Particle *) malloc(sizeof(Particle)*npart);
+    if (ptcl == NULL) {
+      fprintf(stderr, "malloc failed for %s\n", filename);
+      return 1;
+    }
+    read_gadget_ptcl(filename, ptcl);
+
+    calc_mesh_density(mesh_density, ptcl, npart, NGRID, BOXSIZE);
   }
-
-  read_gadget_ptcl(argv[1]/*filename*/, ptcl);
 
   /*
     int32_t nsel = 0;
@@ -290,15 +297,6 @@ int main(int argc, char **argv)
     printf("#  selected in %12.4e <= z <= %12.4e : %d\n", ZMIN, ZMAX, nsel);
   */
 
-  int datasize = NGRID * NGRID * NGRID;
-  mesh_density = (double *)malloc(sizeof(double) * datasize);
-  if (mesh_density == NULL) {
-    fprintf(stderr, "malloc failed for mesh_density\n");
-    fclose(fout);
-    return 1;
-  }
-
-  calc_mesh_density(mesh_density, ptcl, npart, NGRID, BOXSIZE);
 
   fout = fopen("density_tsc.dat", "w");
   if (fout == NULL) {
@@ -307,6 +305,7 @@ int main(int argc, char **argv)
     free(ptcl);
     return 1;
   }
+
 
   for (int i = 0; i < NGRID; i++) {
     for (int j = 0; j < NGRID; j++) {
@@ -322,8 +321,6 @@ int main(int argc, char **argv)
   free(mesh_density);
   fclose(fout);
 
-  printf("npart = %d\n", npart);
-  printf("wrote density_tsc.dat\n");
 
   //printf("# total number of particle in this snapshot : %ld\n", npart_total);
   //printf("# total selected particles = %lld\n", total_selected);
