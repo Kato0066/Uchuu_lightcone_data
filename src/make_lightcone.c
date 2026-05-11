@@ -11,7 +11,7 @@ const double Gadget_UnitMass_in_Msun = 1.0e10;          // 1e10 Msun
 const double Gadget_UnitVelocity_in_cm_per_s = 1e5;     //  1 km/sec
 
 #define IO_CACHE_SIZE 2097152
-#define NGRID 64
+#define NGRID 256
 #define RHO(a,b,c) mesh_density[(c) + ngrid * ((b) + ngrid * (a))]
 #define BOXSIZE 2000.0
 //#define ZMIN 0.0
@@ -105,6 +105,7 @@ int read_gadget_ptcl(const char *filename, Particle *ptcl)
     int nread = nmemory;
     if( (i+nmemory) > npart)  nread = npart - i;
     fread( cache, sizeof(float), 3*nread, fin);
+#pragma omp parallel for schedule(auto)
     for( int j=0; j<nread; j++){
       ptcl[i+j].r[0] = cache[3*j+0];
       ptcl[i+j].r[1] = cache[3*j+1];
@@ -120,7 +121,7 @@ int read_gadget_ptcl(const char *filename, Particle *ptcl)
 }
 
 void calc_mesh_density(double *mesh_density, Particle *ptcl,
-                       int npart, int ngrid, double boxsize)
+                       int npart, int ngrid)
 {
   int p;
 
@@ -131,7 +132,7 @@ void calc_mesh_density(double *mesh_density, Particle *ptcl,
     double wi11, wi21, wi31, wi12, wi22, wi32, wi13, wi23, wi33;
     int iw11, iw21, iw31, iw12, iw22, iw32, iw13, iw23, iw33;
 
-    xt1  = (double)ptcl[p].r[0] / boxsize * (double)ngrid;
+    xt1  = (double)ptcl[p].r[0] / BOXSIZE * (double)ngrid;
     iw21 = (int)(xt1 + 0.5);
     dx1  = xt1 - (double)iw21;
     wi11 = 0.5 * (0.5 - dx1) * (0.5 - dx1);
@@ -148,7 +149,7 @@ void calc_mesh_density(double *mesh_density, Particle *ptcl,
       iw31 = 1;
     }
 
-    xt1  = (double)ptcl[p].r[1] / boxsize * (double)ngrid;
+    xt1  = (double)ptcl[p].r[1] / BOXSIZE * (double)ngrid;
     iw22 = (int)(xt1 + 0.5);
     dx1  = xt1 - (double)iw22;
     wi12 = 0.5 * (0.5 - dx1) * (0.5 - dx1);
@@ -165,7 +166,7 @@ void calc_mesh_density(double *mesh_density, Particle *ptcl,
       iw32 = 1;
     }
 
-    xt1  = (double)ptcl[p].r[2] / boxsize * (double)ngrid;
+    xt1  = (double)ptcl[p].r[2] / BOXSIZE * (double)ngrid;
     iw23 = (int)(xt1 + 0.5);
     dx1  = xt1 - (double)iw23;
     wi13 = 0.5 * (0.5 - dx1) * (0.5 - dx1);
@@ -218,6 +219,28 @@ void calc_mesh_density(double *mesh_density, Particle *ptcl,
   }
 }
 
+void calc_delta(double *delta, double *mesh_density,
+                int ngrid)
+{
+  int datasize = ngrid * ngrid * ngrid;
+  double width = BOXSIZE / (double)ngrid;
+  double volume = width * width * width;
+  double rho_bar = 0.0;
+
+#pragma omp parallel for schedule(auto) reduction(+:rho_bar)
+  for (int i = 0; i < datasize; i++) {
+    double rho = mesh_density[i] / volume;
+    rho_bar += rho;
+  }
+  rho_bar /= (double)datasize;
+
+#pragma omp parallel for schedule(auto)
+  for (int i = 0; i < datasize; i++) {
+    double rho = mesh_density[i] / volume;
+    delta[i] = (rho - rho_bar) / rho_bar;
+  }
+}
+
 
 
 int main(int argc, char **argv)
@@ -226,6 +249,7 @@ int main(int argc, char **argv)
   Particle *ptcl;
   char filename[256];
   double *mesh_density;
+  double *delta;
   //int64_t total_selected = 0;
 
   if (argc != 2) {
@@ -254,6 +278,13 @@ int main(int argc, char **argv)
     mesh_density[i] = 0.e0;
   }
 
+  delta = (double *)malloc(sizeof(double) * datasize);
+  if (delta == NULL) {
+    fprintf(stderr, "malloc failed for delta_field\n");
+    free(mesh_density);
+    return 1;
+  }
+
   for (int32_t i = 0; i < 200; i++) {
     int32_t npart;
 
@@ -277,8 +308,10 @@ int main(int argc, char **argv)
     }
     read_gadget_ptcl(filename, ptcl);
 
-    calc_mesh_density(mesh_density, ptcl, npart, NGRID, BOXSIZE);
+    calc_mesh_density(mesh_density, ptcl, npart, NGRID);
   }
+
+  calc_delta(delta, mesh_density, NGRID);
 
   /*
     int32_t nsel = 0;
@@ -298,10 +331,11 @@ int main(int argc, char **argv)
   */
 
 
-  fout = fopen("density_tsc.dat", "w");
+  fout = fopen("delta_tsc.dat2", "w");
   if (fout == NULL) {
     fprintf(stderr, "cannot open density_tsc.dat\n");
     free(mesh_density);
+    free(delta);
     free(ptcl);
     return 1;
   }
@@ -312,13 +346,14 @@ int main(int argc, char **argv)
       for (int k = 0; k < NGRID; k++) {
         fprintf(fout, "%d %d %d %14.6e\n",
                 i, j, k,
-                mesh_density[k + NGRID * (j + NGRID * i)]);
+                delta[k + NGRID * (j + NGRID * i)]);
       }
     }
   }
 
   free(ptcl);
   free(mesh_density);
+  free(delta);
   fclose(fout);
 
 
