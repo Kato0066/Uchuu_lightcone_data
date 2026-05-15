@@ -4,18 +4,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <math.h>
+#include <assert.h>
+#include <fftw3.h>
 
 
 const double Gadget_UnitLength_in_Mpc = 1.0;            // 1Mpc
 const double Gadget_UnitMass_in_Msun = 1.0e10;          // 1e10 Msun
 const double Gadget_UnitVelocity_in_cm_per_s = 1e5;     //  1 km/sec
 
-#define IO_CACHE_SIZE 2097152
-#define NGRID 256
-#define RHO(a,b,c) mesh_density[(c) + ngrid * ((b) + ngrid * (a))]
-#define BOXSIZE 2000.0
-//#define ZMIN 0.0
-//#define ZMAX 0.1
+#define IO_CACHE_SIZE (2097152)
+#define NGRID (256)
+#define RHO(a,b,c) (mesh_density[(c) + (ngrid+2) * ((b) + ngrid * (a))])
+#define BOXSIZE (2000.0)
+#define PI (3.141592653589793)
+#define SQR(x) ((x)*(x)) //square2乗
+#define CUBE(x) ((x)*(x)*(x))
+#define QUART(x) ((x)*(x)*(x)*(x))
 
 
 typedef struct Particle{
@@ -117,16 +122,15 @@ int read_gadget_ptcl(const char *filename, Particle *ptcl)
 
   free(cache);
   fclose(fin);
+
   return npart;
 }
 
 void calc_mesh_density(double *mesh_density, Particle *ptcl,
                        int npart, int ngrid)
 {
-  int p;
 
-
-  for (p = 0; p < npart; p++) {
+  for (int p = 0; p < npart; p++) {
     double xt1;
     double dx1;
     double wi11, wi21, wi31, wi12, wi22, wi32, wi13, wi23, wi33;
@@ -219,28 +223,125 @@ void calc_mesh_density(double *mesh_density, Particle *ptcl,
   }
 }
 
-void calc_delta(double *delta, double *mesh_density,
-                int ngrid)
+void calc_delta(double *delta, int ngrid)
 {
-  int datasize = ngrid * ngrid * ngrid;
-  double width = BOXSIZE / (double)ngrid;
-  double volume = width * width * width;
-  double rho_bar = 0.0;
+  int64_t datasize = ngrid * ngrid * ngrid;
+  double rho_bar;
 
-#pragma omp parallel for schedule(auto) reduction(+:rho_bar)
-  for (int i = 0; i < datasize; i++) {
-    double rho = mesh_density[i] / volume;
-    rho_bar += rho;
+  rho_bar = 0.0;
+#pragma omp parallel for schedule(auto) collapse(3) reduction(+:rho_bar)
+  for(int ix=0;ix<ngrid;ix++) {
+    for(int iy=0;iy<ngrid;iy++) {
+      for(int iz=0;iz<ngrid;iz++) {
+        int64_t im = iz + (ngrid+2)*(iy + ngrid*ix);
+        rho_bar += delta[im];
+      }
+    }
   }
-  rho_bar /= (double)datasize;
+  rho_bar /= (double)(datasize);
 
 #pragma omp parallel for schedule(auto)
   for (int i = 0; i < datasize; i++) {
-    double rho = mesh_density[i] / volume;
-    delta[i] = (rho - rho_bar) / rho_bar;
+    delta[i] = (delta[i] - rho_bar) / rho_bar;
   }
 }
 
+#define cmplx_re(c) ((c)[0])
+#define cmplx_im(c) ((c)[1])
+#define TINY (1.0e-10)
+
+float correction(float k, float k_N)
+{
+  float ss = sin(0.5 * PI * k / k_N);
+  return (1.0 - SQR(ss) + 0.13333333 * QUART(ss));
+}
+
+#define DELTAHAT(a,b,c) (delta_hat[(c) + (ngrid/2+1) * ((b) + ngrid * (a))])
+
+void calc_power(double *delta, int ngrid, int SG_flag,
+                double **pk, double **kwave, int *nk)
+{
+  fftw_complex *delta_hat;
+  fftw_plan plan;
+
+  float dk;
+  double *power, *weight;
+  int nkbin;
+
+  plan = fftw_plan_dft_r2c_3d(ngrid, ngrid, ngrid,
+                              delta, (fftw_complex *)delta, FFTW_ESTIMATE);
+
+  fftw_execute(plan);
+
+  delta_hat = (fftw_complex *)delta;
+
+  nkbin = ngrid;
+
+  power = (double *)malloc(sizeof(double) * nkbin);
+  weight = (double *)malloc(sizeof(double) * nkbin);
+
+  dk = 2.0 * PI / BOXSIZE;
+
+  for (int ik = 0; ik < nkbin; ik++) {
+    power[ik] = 0.0;
+    weight[ik] = 0.0;
+  }
+
+  for (int ix = 0; ix < ngrid; ix++) {
+    float xk;
+    if (ix <= ngrid / 2) {
+      xk = (float)ix;
+    } else {
+      xk = (float)(ngrid - ix);
+    }
+
+    for (int iy = 0; iy < ngrid; iy++) {
+      float yk;
+      if (iy <= ngrid / 2) {
+        yk = (float)iy;
+      } else {
+        yk = (float)(ngrid - iy);
+      }
+
+      for (int iz = 0; iz < ngrid / 2 + 1; iz++) {
+        float zk;
+        int ik;
+
+        zk = (float)iz;
+        ik = (int)(sqrt(SQR(xk) + SQR(yk) + SQR(zk)));
+
+        if (ik < nkbin) {
+          float re = cmplx_re(DELTAHAT(ix, iy, iz));
+          float im = cmplx_im(DELTAHAT(ix, iy, iz));
+          power[ik] += SQR(re) + SQR(im);
+          weight[ik] += 1.0;
+        }
+      }
+    }
+  }
+
+  {
+    float nmesh6 = SQR(CUBE((float)ngrid));
+    float k_N = (float)(nkbin / 2) * dk;
+
+    for (int ik = 0; ik < nkbin; ik++) {
+      power[ik] /= (weight[ik] + TINY);
+      power[ik] /= correction(ik * dk, k_N);
+      power[ik] /= nmesh6;
+    }
+  }
+
+  *nk = nkbin;
+  *pk = (double *)malloc(sizeof(double) * nkbin);
+  *kwave = (double *)malloc(sizeof(double) * nkbin);
+
+  for (int ik = 0; ik < nkbin; ik++) (*pk)[ik] = power[ik];
+  for (int ik = 0; ik < nkbin; ik++) (*kwave)[ik] = dk * ((float)ik + 0.5);
+
+  free(power);
+  free(weight);
+  fftw_destroy_plan(plan);
+}
 
 
 int main(int argc, char **argv)
@@ -248,43 +349,31 @@ int main(int argc, char **argv)
   FILE *fout;
   Particle *ptcl;
   char filename[256];
-  double *mesh_density;
+  char pk_filename[256];
   double *delta;
-  //int64_t total_selected = 0;
+  double *pk, *kwave;
+  int nkbin;
+  int SG_flag = 0;
 
-  if (argc != 2) {
-    fprintf(stderr, "Usage: %s base_filename\n", argv[0]);
+  if (argc != 2 && argc != 3) {
+    fprintf(stderr, "Usage: %s base_filename <SG_flag>\n", argv[0]);
     return 1;
   }
 
-  /*fout = fopen("zslice_xy.dat", "w");
-    if (fout == NULL) {
-    fprintf(stderr, "cannot open zslice_xy.dat\n");
-    return 1;
-    }
-
-
-    int64_t npart_total = 0;
-
-  */
-
-  int datasize = NGRID * NGRID * NGRID;
-  mesh_density = (double *)malloc(sizeof(double) * datasize);
-  if (mesh_density == NULL) {
-    fprintf(stderr, "malloc failed for mesh_density\n");
-    return 1;
-  }
-  for (int i = 0; i < datasize; i++) {
-    mesh_density[i] = 0.e0;
+  if (argc == 3) {
+    SG_flag = atoi(argv[2]);
+  }else{
+    SG_flag = 0;
   }
 
+  int datasize = NGRID * NGRID * (NGRID+2);
   delta = (double *)malloc(sizeof(double) * datasize);
-  if (delta == NULL) {
-    fprintf(stderr, "malloc failed for delta_field\n");
-    free(mesh_density);
-    return 1;
+
+  for (int i = 0; i < datasize; i++) {
+    delta[i] = 0.e0;
   }
 
+  int64_t npart_total = 0;
   for (int32_t i = 0; i < 200; i++) {
     int32_t npart;
 
@@ -300,47 +389,23 @@ int main(int argc, char **argv)
     if (npart < 0) break;
 
     printf("%s : npart = %d\n", filename, npart);
+    npart_total += npart; printf("%lld\n", npart_total);
 
     ptcl = (Particle *) malloc(sizeof(Particle)*npart);
-    if (ptcl == NULL) {
-      fprintf(stderr, "malloc failed for %s\n", filename);
-      return 1;
-    }
     read_gadget_ptcl(filename, ptcl);
 
-    calc_mesh_density(mesh_density, ptcl, npart, NGRID);
-  }
-
-  calc_delta(delta, mesh_density, NGRID);
-
-  /*
-    int32_t nsel = 0;
-    #pragma omp parallel for schedule(auto) reduction(+:nsel)
-    for (int32_t j = 0; j < npart; j++) {
-    if (ptcl[j].r[2] >= ZMIN && ptcl[j].r[2] <= ZMAX) {
-    fprintf(fout, "%14.6e %14.6e %14.6e\n",
-    ptcl[j].r[0],
-    ptcl[j].r[1],
-    ptcl[j].r[2]);
-    nsel++;
-    }
-    }
-
-    total_selected += nsel;
-    printf("#  selected in %12.4e <= z <= %12.4e : %d\n", ZMIN, ZMAX, nsel);
-  */
-
-
-  fout = fopen("delta_tsc.dat2", "w");
-  if (fout == NULL) {
-    fprintf(stderr, "cannot open density_tsc.dat\n");
-    free(mesh_density);
-    free(delta);
+    calc_mesh_density(delta, ptcl, npart, NGRID);
     free(ptcl);
-    return 1;
   }
 
+  printf("# total number of particles for this snapshot : %lld \n",
+         npart_total);
 
+  calc_delta(delta, NGRID);
+  calc_power(delta, NGRID, SG_flag, &pk, &kwave, &nkbin);
+
+#if 0
+  fout = fopen("delta_tsc.dat2", "w");
   for (int i = 0; i < NGRID; i++) {
     for (int j = 0; j < NGRID; j++) {
       for (int k = 0; k < NGRID; k++) {
@@ -350,9 +415,22 @@ int main(int argc, char **argv)
       }
     }
   }
+#endif
 
-  free(ptcl);
-  free(mesh_density);
+  sprintf(pk_filename, "power_spectrum.pk");
+  fout = fopen(pk_filename, "w");
+  if (SG_flag) {
+    for (int ik = 5; ik < nkbin / 2 - 5; ik++) {
+      fprintf(fout, "%14.6e %14.6e\n", kwave[ik], pk[ik]);
+    }
+  } else {
+    for (int ik = 1; ik < nkbin / 2; ik++) {
+      fprintf(fout, "%14.6e %14.6e\n", kwave[ik], pk[ik]);
+    }
+  }
+
+  free(pk);
+  free(kwave);
   free(delta);
   fclose(fout);
 
@@ -363,3 +441,8 @@ int main(int argc, char **argv)
 
   return 0;
 }
+
+#undef DELTAHAT
+#undef TINY
+#undef cmplx_re
+#undef cmplx_im
