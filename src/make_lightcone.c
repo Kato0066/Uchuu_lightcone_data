@@ -14,13 +14,15 @@ const double Gadget_UnitMass_in_Msun = 1.0e10;          // 1e10 Msun
 const double Gadget_UnitVelocity_in_cm_per_s = 1e5;     //  1 km/sec
 
 #define IO_CACHE_SIZE (2097152)
-#define NGRID (256)
+#define NGRID (1024)
 #define RHO(a,b,c) (mesh_density[(c) + (ngrid+2) * ((b) + ngrid * (a))])
 #define BOXSIZE (2000.0)
 #define PI (3.141592653589793)
 #define SQR(x) ((x)*(x)) //square2乗
 #define CUBE(x) ((x)*(x)*(x))
 #define QUART(x) ((x)*(x)*(x)*(x))
+#define GRAVITY_G (1.0) //後で計算
+
 
 
 typedef struct Particle{
@@ -240,9 +242,14 @@ void calc_delta(double *delta, int ngrid)
   }
   rho_bar /= (double)(datasize);
 
-#pragma omp parallel for schedule(auto)
-  for (int i = 0; i < datasize; i++) {
-    delta[i] = (delta[i] - rho_bar) / rho_bar;
+#pragma omp parallel for schedule(auto) collapse(3)
+  for(int ix=0;ix<ngrid;ix++) {
+    for(int iy=0;iy<ngrid;iy++) {
+      for(int iz=0;iz<ngrid;iz++) {
+        int64_t im = iz + (ngrid+2)*(iy + ngrid*ix);
+        delta[im] = (delta[im] - rho_bar) / rho_bar;
+      }
+    }
   }
 }
 
@@ -258,7 +265,7 @@ float correction(float k, float k_N)
 
 #define DELTAHAT(a,b,c) (delta_hat[(c) + (ngrid/2+1) * ((b) + ngrid * (a))])
 
-void calc_power(double *delta, int ngrid, int SG_flag,
+void calc_power(double *delta, int ngrid,
                 double **pk, double **kwave, int *nk)
 {
   fftw_complex *delta_hat;
@@ -343,28 +350,151 @@ void calc_power(double *delta, int ngrid, int SG_flag,
   fftw_destroy_plan(plan);
 }
 
+void calc_potential(double *delta_potential, int ngrid)
+{
+  fftw_complex *delta_potential_hat;
+  fftw_plan forward_plan, backward_plan;
+  double dx = BOXSIZE / (double)ngrid;
+
+  forward_plan = fftw_plan_dft_r2c_3d(ngrid, ngrid, ngrid,
+                                      delta_potential, (fftw_complex *)delta_potential,
+                                      FFTW_ESTIMATE);
+  fftw_execute(forward_plan);
+
+  delta_potential_hat = (fftw_complex *)delta_potential;
+
+  for (int ix = 0; ix < ngrid; ix++) {
+    int kx;
+    if (ix <= ngrid / 2) {
+      kx = ix;
+    } else {
+      kx = ix - ngrid;
+    }
+
+    for (int iy = 0; iy < ngrid; iy++) {
+      int ky;
+      if (iy <= ngrid / 2) {
+        ky = iy;
+      } else {
+        ky = iy - ngrid;
+      }
+
+      for (int iz = 0; iz < ngrid / 2 + 1; iz++) {
+        int kz = iz;
+        int im = iz + (ngrid / 2 + 1) * (iy + ngrid * ix);
+
+        double sx = sin(PI * (double)kx / (double)ngrid);
+        double sy = sin(PI * (double)ky / (double)ngrid);
+        double sz = sin(PI * (double)kz / (double)ngrid);
+        double denom = SQR(sx) + SQR(sy) + SQR(sz);   //分母
+
+        if (denom == 0.0) {
+          delta_potential_hat[im][0] = 0.0;
+          delta_potential_hat[im][1] = 0.0;
+        } else {
+          double green = -PI * GRAVITY_G * dx * dx / denom;
+          delta_potential_hat[im][0] *= green;
+          delta_potential_hat[im][1] *= green;
+        }
+      }
+    }
+  }
+
+  backward_plan = fftw_plan_dft_c2r_3d(ngrid, ngrid, ngrid,
+                                       delta_potential_hat, delta_potential,
+                                       FFTW_ESTIMATE);
+  fftw_execute(backward_plan);
+
+#pragma omp parallel for schedule(auto) collapse(3)
+  for(int ix = 0;ix < ngrid;ix++) {
+    for(int iy = 0;iy < ngrid;iy++) {
+      for(int iz = 0;iz < ngrid;iz++) {
+        int64_t im = iz + (ngrid + 2) * (iy + ngrid * ix);
+        delta_potential[im] /= (ngrid * ngrid * ngrid);
+      }
+    }
+  }
+
+  fftw_destroy_plan(forward_plan);
+  fftw_destroy_plan(backward_plan);
+}
+
+int output_potential_binary(const char *filename, double *delta_potential, int ngrid)
+{
+  FILE *fp;
+
+  fp = fopen(filename, "wb");
+  if (fp == NULL) {
+    fprintf(stderr, "cannot open %s\n", filename);
+    return -1;
+  }
+
+  for(int ix = 0;ix < ngrid;ix++) {
+    for(int iy = 0;iy < ngrid;iy++) {
+      int64_t im = (ngrid + 2)*(iy + ngrid * ix);
+      if (fwrite(&delta_potential[im], sizeof(double), ngrid, fp) != (size_t)ngrid) {
+        fprintf(stderr, "failed to write %s\n", filename);
+        fclose(fp);
+        return -1;
+      }
+    }
+  }
+
+  fclose(fp);
+  return 0;
+}
+
+
+#define __SNAPSHOT_PREFIX__ "../../snapdir_%03d/U2000_%03d_samp0p005.gad.%d"
+
+int output_potential_slice(const char *filename, double *delta_potential,
+                           int ngrid, int iz_slice)
+{
+  FILE *fp;
+  double dx = BOXSIZE / (double)ngrid;
+
+  fp = fopen(filename, "w");
+  if (fp == NULL) {
+    fprintf(stderr, "cannot open %s\n", filename);
+    return -1;
+  }
+
+  for (int ix = 0; ix < ngrid; ix++) {
+    for (int iy = 0; iy < ngrid; iy++) {
+      int64_t im = iz_slice + (ngrid + 2) * (iy + ngrid * ix);
+
+      fprintf(fp, "%14.6e %14.6e %14.6e\n",
+              dx * ((double)ix + 0.5),
+              dx * ((double)iy + 0.5),
+              delta_potential[im]);
+    }
+    fprintf(fp, "\n");
+  }
+
+  fclose(fp);
+  return 0;
+}
+
 
 int main(int argc, char **argv)
 {
   FILE *fout;
   Particle *ptcl;
   char filename[256];
+  char potential_filename[256];
+  char potential_slice_filename[256];
   char pk_filename[256];
   double *delta;
+  double *delta_potential;
   double *pk, *kwave;
   int nkbin;
-  int SG_flag = 0;
 
   if (argc != 2 && argc != 3) {
-    fprintf(stderr, "Usage: %s base_filename <SG_flag>\n", argv[0]);
+    fprintf(stderr, "Usage: %s snapshot_index \n", argv[0]);
     return 1;
   }
 
-  if (argc == 3) {
-    SG_flag = atoi(argv[2]);
-  }else{
-    SG_flag = 0;
-  }
+  int snap_indx = atoi(argv[1]);
 
   int datasize = NGRID * NGRID * (NGRID+2);
   delta = (double *)malloc(sizeof(double) * datasize);
@@ -379,11 +509,9 @@ int main(int argc, char **argv)
 
     fprintf(stdout, "# Reading %d-th file out of 200.\n", i);
 
-    sprintf(filename, "%s.%d", argv[1], i);
-    /*
-      npart_total += npart;
-      if (npart < 0) break;
-    */
+    //    sprintf(filename, "%s.%d", argv[1], i);
+    sprintf(filename, __SNAPSHOT_PREFIX__,snap_indx, snap_indx, i);
+    printf("%s\n", filename);
 
     npart = get_gadget_npart(filename);
     if (npart < 0) break;
@@ -402,7 +530,26 @@ int main(int argc, char **argv)
          npart_total);
 
   calc_delta(delta, NGRID);
-  calc_power(delta, NGRID, SG_flag, &pk, &kwave, &nkbin);
+
+  delta_potential = (double *)malloc(sizeof(double) * datasize);
+
+  for (int i = 0; i < datasize; i++) {
+    delta_potential[i] = delta[i];
+  }
+
+  calc_power(delta, NGRID, &pk, &kwave, &nkbin);
+  calc_potential(delta_potential, NGRID);
+
+  sprintf(potential_slice_filename, "potential_slice_%03d.dat", snap_indx);
+  if (output_potential_slice(potential_slice_filename,
+			     delta_potential, NGRID, NGRID / 2) < 0) {
+    free(pk);
+    free(kwave);
+    free(delta_potential);
+    free(delta);
+    return 1;
+  }
+
 
 #if 0
   fout = fopen("delta_tsc.dat2", "w");
@@ -417,17 +564,12 @@ int main(int argc, char **argv)
   }
 #endif
 
-  sprintf(pk_filename, "power_spectrum.pk");
+  sprintf(pk_filename, "power_%03d.dat", snap_indx);
   fout = fopen(pk_filename, "w");
-  if (SG_flag) {
-    for (int ik = 5; ik < nkbin / 2 - 5; ik++) {
-      fprintf(fout, "%14.6e %14.6e\n", kwave[ik], pk[ik]);
-    }
-  } else {
-    for (int ik = 1; ik < nkbin / 2; ik++) {
-      fprintf(fout, "%14.6e %14.6e\n", kwave[ik], pk[ik]);
-    }
+  for (int ik = 1; ik < nkbin / 2; ik++) {
+    fprintf(fout, "%14.6e %14.6e\n", kwave[ik], pk[ik]);
   }
+
 
   free(pk);
   free(kwave);
