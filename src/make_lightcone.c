@@ -475,6 +475,35 @@ int output_potential_slice(const char *filename, double *delta_potential,
   return 0;
 }
 
+int output_delta_slice(const char *filename, double *delta,
+                       int ngrid, int iz_slice)
+{
+  FILE *fp;
+  double dx = BOXSIZE / (double)ngrid;
+
+  fp = fopen(filename, "w");
+  if (fp == NULL) {
+    fprintf(stderr, "cannot open %s\n", filename);
+    return -1;
+  }
+
+  for (int ix = 0; ix < ngrid; ix++) {
+    for (int iy = 0; iy < ngrid; iy++) {
+      int64_t im = iz_slice + (ngrid + 2) * (iy + ngrid * ix);
+
+      fprintf(fp, "%14.6e %14.6e %14.6e\n",
+              dx * ((double)ix + 0.5),
+              dx * ((double)iy + 0.5),
+              delta[im]);
+    }
+    fprintf(fp, "\n");
+  }
+
+  fclose(fp);
+  return 0;
+}
+
+
 
 int main(int argc, char **argv)
 {
@@ -482,6 +511,7 @@ int main(int argc, char **argv)
   Particle *ptcl;
   char filename[256];
   char potential_filename[256];
+  char delta_slice_filename[256];
   char potential_slice_filename[256];
   char pk_filename[256];
   double *delta;
@@ -541,14 +571,11 @@ int main(int argc, char **argv)
   calc_potential(delta_potential, NGRID);
 
   sprintf(potential_slice_filename, "potential_slice_%03d.dat", snap_indx);
-  if (output_potential_slice(potential_slice_filename,
-			     delta_potential, NGRID, NGRID / 2) < 0) {
-    free(pk);
-    free(kwave);
-    free(delta_potential);
-    free(delta);
-    return 1;
-  }
+  output_potential_slice(potential_slice_filename,
+                         delta_potential, NGRID, NGRID / 2);
+  sprintf(delta_slice_filename, "delta_slice_%03d.dat", snap_indx);
+  output_delta_slice(delta_slice_filename,
+                     delta_potential, NGRID, NGRID / 2 );
 
 
 #if 0
