@@ -14,7 +14,7 @@ const double Gadget_UnitMass_in_Msun = 1.0e10;          // 1e10 Msun
 const double Gadget_UnitVelocity_in_cm_per_s = 1e5;     //  1 km/sec
 
 #define IO_CACHE_SIZE (2097152)
-#define NGRID (1024)
+#define NGRID (512)
 #define RHO(a,b,c) (mesh_density[(c) + (ngrid+2) * ((b) + ngrid * (a))])
 #define BOXSIZE (2000.0)
 #define PI (3.141592653589793)
@@ -463,7 +463,7 @@ int output_potential_slice(const char *filename, double *delta_potential,
     for (int iy = 0; iy < ngrid; iy++) {
       int64_t im = iz_slice + (ngrid + 2) * (iy + ngrid * ix);
 
-      fprintf(fp, "%14.6e %14.6e %14.6e\n",
+      fprintf(fp, "%23.16e %23.16e %23.16e\n",
               dx * ((double)ix + 0.5),
               dx * ((double)iy + 0.5),
               delta_potential[im]);
@@ -491,7 +491,7 @@ int output_delta_slice(const char *filename, double *delta,
     for (int iy = 0; iy < ngrid; iy++) {
       int64_t im = iz_slice + (ngrid + 2) * (iy + ngrid * ix);
 
-      fprintf(fp, "%14.6e %14.6e %14.6e\n",
+      fprintf(fp, "%23.16e %23.16e %23.16e\n",
               dx * ((double)ix + 0.5),
               dx * ((double)iy + 0.5),
               delta[im]);
@@ -560,9 +560,11 @@ int main(int argc, char **argv)
          npart_total);
 
   calc_delta(delta, NGRID);
+  sprintf(delta_slice_filename, "delta_slice_%03d.dat", snap_indx);
+  output_delta_slice(delta_slice_filename,
+                     delta_potential, NGRID, NGRID / 2 );
 
   delta_potential = (double *)malloc(sizeof(double) * datasize);
-
   for (int i = 0; i < datasize; i++) {
     delta_potential[i] = delta[i];
   }
@@ -573,10 +575,6 @@ int main(int argc, char **argv)
   sprintf(potential_slice_filename, "potential_slice_%03d.dat", snap_indx);
   output_potential_slice(potential_slice_filename,
                          delta_potential, NGRID, NGRID / 2);
-  sprintf(delta_slice_filename, "delta_slice_%03d.dat", snap_indx);
-  output_delta_slice(delta_slice_filename,
-                     delta_potential, NGRID, NGRID / 2 );
-
 
 #if 0
   fout = fopen("delta_tsc.dat2", "w");
