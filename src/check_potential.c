@@ -66,13 +66,14 @@ int main(int argc, char **argv)
   int iz_slice;
   int ngrid;
   double boxsize;
+  double scale_factor;
   double dx;
   int64_t slice_size;
   double max_rel_res = 0.0;
 
-  if (argc != 7) {
+  if (argc != 8) {
     fprintf(stderr,
-            "Usage: %s delta_slice.dat potential.bin output.dat iz_slice ngrid boxsize\n",
+            "Usage: %s delta_slice.dat potential.bin output.dat iz_slice ngrid boxsize scale_factor\n",
             argv[0]);
     return 1;
   }
@@ -80,7 +81,8 @@ int main(int argc, char **argv)
   iz_slice = atoi(argv[4]);
   ngrid = atoi(argv[5]);
   boxsize = atof(argv[6]);
-  dx = boxsize / (double)ngrid;
+  scale_factor = atof(argv[7]);
+  dx = 1 / (double)ngrid;
   slice_size = (int64_t)ngrid * ngrid;
 
   delta = (double *)malloc(sizeof(double) * slice_size);
@@ -125,7 +127,7 @@ int main(int argc, char **argv)
 
       laplacian = lap_x + lap_y + lap_z;
 
-      rhs = 4.0 * PI * GRAVITY_G * delta[im2];
+      rhs = 4.0 * PI * scale_factor * scale_factor * delta[im2];
       residual = laplacian - rhs;
 
       if (fabs(rhs) > RHS_TINY) {

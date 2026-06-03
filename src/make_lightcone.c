@@ -66,14 +66,33 @@ int get_gadget_npart(const char *filename)
   }
 
   fread( &blksize, 4, 1, fin);
-  //  fprintf( stderr, "Reading Gadget file blksize= %d\n", blksize);
   fread( &gadget_header, sizeof(gadget_header), 1, fin);
   fread( &blksize, 4, 1, fin);
-  //  fprintf( stderr, "End Reading Gadget file blksize= %d\n", blksize);
 
   fclose(fin);
 
   return gadget_header.Npart[1];
+}
+
+double get_gadget_redshift(const char *filename)
+{
+  FILE *fin;
+  int blksize;
+  GadgetHeader gadget_header;
+
+  fin = fopen(filename, "rb");
+  if (fin == NULL) {
+    fprintf(stderr, "cannot open %s\n", filename);
+    return -1;
+  }
+
+  fread( &blksize, 4, 1, fin);
+  fread( &gadget_header, sizeof(gadget_header), 1, fin);
+  fread( &blksize, 4, 1, fin);
+
+  fclose(fin);
+
+  return gadget_header.Redshift;
 }
 
 int read_gadget_ptcl(const char *filename, Particle *ptcl)
@@ -350,11 +369,11 @@ void calc_power(double *delta, int ngrid,
   fftw_destroy_plan(plan);
 }
 
-void calc_potential(double *delta_potential, int ngrid)
+void calc_potential(double *delta_potential, int ngrid, double scale_factor)
 {
   fftw_complex *delta_potential_hat;
   fftw_plan forward_plan, backward_plan;
-  double dx = BOXSIZE / (double)ngrid;
+  double dx = 1 / (double)ngrid;
 
   forward_plan = fftw_plan_dft_r2c_3d(ngrid, ngrid, ngrid,
                                       delta_potential, (fftw_complex *)delta_potential,
@@ -392,7 +411,7 @@ void calc_potential(double *delta_potential, int ngrid)
           delta_potential_hat[im][0] = 0.0;
           delta_potential_hat[im][1] = 0.0;
         } else {
-          double green = -PI * GRAVITY_G * dx * dx / denom;
+          double green = -PI * GRAVITY_G * dx * dx * scale_factor * scale_factor / denom;
           delta_potential_hat[im][0] *= green;
           delta_potential_hat[im][1] *= green;
         }
@@ -451,7 +470,7 @@ int output_potential_slice(const char *filename, double *delta_potential,
                            int ngrid, int iz_slice)
 {
   FILE *fp;
-  double dx = BOXSIZE / (double)ngrid;
+  double dx = 1 / (double)ngrid;
 
   fp = fopen(filename, "w");
   if (fp == NULL) {
@@ -517,6 +536,8 @@ int main(int argc, char **argv)
   double *delta;
   double *delta_potential;
   double *pk, *kwave;
+  double redshift;
+  double scale_factor;
   int nkbin;
 
   if (argc != 2 && argc != 3) {
@@ -525,6 +546,14 @@ int main(int argc, char **argv)
   }
 
   int snap_indx = atoi(argv[1]);
+
+  sprintf(filename, __SNAPSHOT_PREFIX__, snap_indx, snap_indx, 0);
+  redshift = get_gadget_redshift(filename);
+  scale_factor = 1.0 / (1.0 + redshift);
+
+
+  printf("# Redshift = %14.6e\n", redshift);
+  printf("# Scale factor = %14.6e\n", scale_factor);
 
   int datasize = NGRID * NGRID * (NGRID+2);
   delta = (double *)malloc(sizeof(double) * datasize);
@@ -562,7 +591,7 @@ int main(int argc, char **argv)
   calc_delta(delta, NGRID);
   sprintf(delta_slice_filename, "delta_slice_%03d.dat", snap_indx);
   output_delta_slice(delta_slice_filename,
-                     delta_potential, NGRID, NGRID / 2 );
+                     delta, NGRID, NGRID / 2 );
 
   delta_potential = (double *)malloc(sizeof(double) * datasize);
   for (int i = 0; i < datasize; i++) {
@@ -570,11 +599,13 @@ int main(int argc, char **argv)
   }
 
   calc_power(delta, NGRID, &pk, &kwave, &nkbin);
-  calc_potential(delta_potential, NGRID);
+  calc_potential(delta_potential, NGRID, scale_factor);
 
   sprintf(potential_slice_filename, "potential_slice_%03d.dat", snap_indx);
-  output_potential_slice(potential_slice_filename,
-                         delta_potential, NGRID, NGRID / 2);
+  output_potential_slice(potential_slice_filename,delta_potential, NGRID, NGRID / 2);
+
+  sprintf(potential_filename, "potential_%03d.bin", snap_indx);
+  output_potential_binary(potential_filename, delta_potential, NGRID);
 
 #if 0
   fout = fopen("delta_tsc.dat2", "w");
