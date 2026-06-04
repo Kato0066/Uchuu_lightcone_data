@@ -470,7 +470,7 @@ int output_potential_slice(const char *filename, double *delta_potential,
                            int ngrid, int iz_slice)
 {
   FILE *fp;
-  double dx = 1 / (double)ngrid;
+  double dx = 1.0 / (double)ngrid;
 
   fp = fopen(filename, "w");
   if (fp == NULL) {
@@ -498,7 +498,7 @@ int output_delta_slice(const char *filename, double *delta,
                        int ngrid, int iz_slice)
 {
   FILE *fp;
-  double dx = BOXSIZE / (double)ngrid;
+  double dx = 1.0 / (double)ngrid;
 
   fp = fopen(filename, "w");
   if (fp == NULL) {
