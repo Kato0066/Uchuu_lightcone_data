@@ -2,7 +2,6 @@
 #include <math.h>
 
 #define N (128)
-#define OUTPUT_INTERVAL (10)
 
 int main(int argc, char **arg){
   int i, j, k;
@@ -100,10 +99,10 @@ int main(int argc, char **arg){
       char name[120];
 
       sprintf(name, "wave_slice-%03d.dat", istep);
-      fp_phi = fopen(name, "w");
+      fp = fopen(name, "w");
       for(i=0;i<N;i++) {
         for(j=0;j<N;j++) {
-          fprintf(fp_phi, "%12.4e %12.4e %12.4e\n",
+          fprintf(fp, "%12.4e %12.4e %12.4e\n",
                   dx*(double)i, dx*(double)j, U2[i][j][kmid]);
         }
         fprintf(fp, "\n");
@@ -119,8 +118,6 @@ int main(int argc, char **arg){
     }
     fprintf(output_wave_slice, "\n");
   }
-  fprintf(output_wave_slice, "\n");
-
   fclose(output_wave_slice);
 
   return 0;
