@@ -1,7 +1,15 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 
 #define N (128)
+
+double initial_wave(double x, double y, double z)
+{
+  return exp(-100.0*((x-0.5)*(x-0.5)
+		     + (y-0.5)*(y-0.5)
+		     + (z-0.5)*(z-0.5)));
+}
 
 int main(int argc, char **arg){
   int i, j, k;
@@ -11,37 +19,37 @@ int main(int argc, char **arg){
   double dt = nu_cfl*dx/c;
   double PI = 3.141592653589793;
   double tnow = 0.0;
-  double tend = 0.5;
+  double tend = 0.7;
   int istep = 0;
   int kmid = N / 2;
 
-  static double U0[N][N][N];
-  static double U1[N][N][N];
-  static double U2[N][N][N];
-  static double phi[N][N][N];
-  static double A[N][N][N];
+  double (*U0)[N][N];
+  double (*U1)[N][N];
+  double (*U2)[N][N];
+  double (*phi)[N][N];
+  double (*A)[N][N];
 
-  //初期条件
+  U0 = malloc(sizeof(double) * N * N * N);
+  U1 = malloc(sizeof(double) * N * N * N);
+  U2 = malloc(sizeof(double) * N * N * N);
+  phi = malloc(sizeof(double) * N * N * N);
+  A = malloc(sizeof(double) * N * N * N);
+
   for(i=0;i<N;i++){
     for(j=0;j<N;j++){
       for(k=0;k<N;k++){
         double x = (i+0.5)*dx;
         double y = (j+0.5)*dx;
         double z = (k+0.5)*dx;
-        U0[i][j][k]= exp(-100.0*((x-0.5)*(x-0.5)+(y-0.5)*(y-0.5)+(z-0.5)*(z-0.5)));
-        //U0[i][j]= sin(2.0*PI*x);
+
+        U0[i][j][k] = initial_wave(x, y, z);
       }
     }
   }
 
-
-
   for(i=0; i<N; i++){
     for(j=0; j<N; j++){
       for(k=0; k<N; k++){
-        double x = (i+0.5)*dx;
-        double y = (j+0.5)*dx;
-        double z = (k+0.5)*dx;
         phi[i][j][k] = 0.0;
         A[i][j][k] = 1.0/(1.0-4.0*phi[i][j][k])*(nu_cfl*nu_cfl);
 
@@ -64,7 +72,7 @@ int main(int argc, char **arg){
 
 
   FILE *output_wave_slice;
-  output_wave_slice = fopen("wave_slice_final.dat", "w");
+  output_wave_slice = fopen("wave_slices/wave_slice_final.dat", "w");
 
   while(tnow < tend) {
     for(i=0;i<N;i++){
@@ -98,7 +106,7 @@ int main(int argc, char **arg){
       FILE *fp;
       char name[120];
 
-      sprintf(name, "wave_slice-%03d.dat", istep);
+      sprintf(name, "wave_slices/wave_slice-%03d.dat", istep);
       fp = fopen(name, "w");
       for(i=0;i<N;i++) {
         for(j=0;j<N;j++) {
@@ -119,6 +127,12 @@ int main(int argc, char **arg){
     fprintf(output_wave_slice, "\n");
   }
   fclose(output_wave_slice);
+
+  free(U0);
+  free(U1);
+  free(U2);
+  free(phi);
+  free(A);
 
   return 0;
 
