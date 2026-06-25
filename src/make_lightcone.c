@@ -551,9 +551,8 @@ int main(int argc, char **argv)
   redshift = get_gadget_redshift(filename);
   scale_factor = 1.0 / (1.0 + redshift);
 
-
-  printf("# Redshift = %14.6e\n", redshift);
-  printf("# Scale factor = %14.6e\n", scale_factor);
+  printf("# Redshift = %23.16e\n", redshift);
+  printf("# Scale factor = %23.16e\n", scale_factor);
 
   int datasize = NGRID * NGRID * (NGRID+2);
   delta = (double *)malloc(sizeof(double) * datasize);
