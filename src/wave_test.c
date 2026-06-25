@@ -7,9 +7,31 @@
 double initial_wave(double x, double y, double z)
 {
   return exp(-100.0*((x-0.5)*(x-0.5)
-		     + (y-0.5)*(y-0.5)
-		     + (z-0.5)*(z-0.5)));
+                     + (y-0.5)*(y-0.5)
+                     + (z-0.5)*(z-0.5)));
 }
+
+void phi_zero(double phi[N][N][N])
+{
+  for(int i=0;i<N;i++) {
+    for(int j=0;j<N;j++) {
+      for(int k=0;k<N;k++) {
+        phi[i][j][k] = 0.0;
+      }
+    }
+  }
+}
+
+void read_potential_binary(const char *filename, double phi[N][N][N])
+{
+  FILE *fp;
+
+  fp = fopen(filename, "rb");
+  fread(&phi[0][0][0], sizeof(double), N*N*N, fp);
+  fclose(fp);
+}
+
+
 
 int main(int argc, char **arg){
   int i, j, k;
@@ -35,6 +57,12 @@ int main(int argc, char **arg){
   phi = malloc(sizeof(double) * N * N * N);
   A = malloc(sizeof(double) * N * N * N);
 
+  if(argc == 2) {
+    read_potential_binary(argv[1], phi);
+  } else {
+    phi_zero(phi);
+  }
+
   for(i=0;i<N;i++){
     for(j=0;j<N;j++){
       for(k=0;k<N;k++){
@@ -50,7 +78,6 @@ int main(int argc, char **arg){
   for(i=0; i<N; i++){
     for(j=0; j<N; j++){
       for(k=0; k<N; k++){
-        phi[i][j][k] = 0.0;
         A[i][j][k] = 1.0/(1.0-4.0*phi[i][j][k])*(nu_cfl*nu_cfl);
 
         int ip = i+1 > N-1 ? i+1-N : i+1;
