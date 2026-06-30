@@ -3,12 +3,26 @@
 #include <math.h>
 
 #define N (128)
+#define PI (3.141592653589793)
+#define BOXSIZE (2000.0)
+#define GRAVITY_G (4.30091727003628e-9)
+#define SPEED_OF_LIGHT (299792.458)
+#define GRAVITY_G (1.0)
+#define GADGET_UNIT_MASS_IN_MSUN (1.0e10)
 
-double initial_wave(double x, double y, double z)
+double initial_wave(double x, double y, double z, double sigma)
 {
-  return exp(-100.0*((x-0.5)*(x-0.5)
-                     + (y-0.5)*(y-0.5)
-                     + (z-0.5)*(z-0.5)));
+
+  return exp(-0.5/(sigma*sigma)*((x-0.5)*(x-0.5)
+                                 + (y-0.5)*(y-0.5)
+                                 + (z-0.5)*(z-0.5)));
+
+#if 0
+  (void)y;
+  (void)z;
+
+  return sin(2.0 * PI * x);
+#endif
 }
 
 void phi_zero(double phi[N][N][N])
@@ -31,19 +45,52 @@ void read_potential_binary(const char *filename, double phi[N][N][N])
   fclose(fp);
 }
 
+void output_wave_binary(const char *filename, double u[N][N][N])
+{
+  FILE *fp;
+
+  fp = fopen(filename, "wb");
+  fwrite(&u[0][0][0], sizeof(double), N*N*N, fp);
+  fclose(fp);
+}
+
+double read_rho_bar(const char *filename)
+{
+  FILE *fp;
+  double rho_bar;
+
+  fp = fopen(filename, "r");
+  fscanf(fp, "%lf", &rho_bar);
+  fclose(fp);
+
+  return rho_bar;
+}
+
+double calc_beta(double rho_bar)
+{
+  double total_mass_msun;
+
+  total_mass_msun = rho_bar * (double)N * (double)N * (double)N * GADGET_UNIT_MASS_IN_MSUN;
+
+  return GRAVITY_G * total_mass_msun
+    / (BOXSIZE * SPEED_OF_LIGHT * SPEED_OF_LIGHT);
+}
 
 
-int main(int argc, char **arg){
+int main(int argc, char **argv){
   int i, j, k;
   double nu_cfl = 0.5;
   double c = 1.0;
   double dx = 1.0 / (double)N;
   double dt = nu_cfl*dx/c;
-  double PI = 3.141592653589793;
+  //double PI = 3.141592653589793;
   double tnow = 0.0;
-  double tend = 0.7;
+  double tend = 1.0;
   int istep = 0;
   int kmid = N / 2;
+  double sigma = dx;
+  double beta = 1.0;
+  double rho_bar = 0.0;
 
   double (*U0)[N][N];
   double (*U1)[N][N];
@@ -57,8 +104,10 @@ int main(int argc, char **arg){
   phi = malloc(sizeof(double) * N * N * N);
   A = malloc(sizeof(double) * N * N * N);
 
-  if(argc == 2) {
+  if(argc == 3) {
     read_potential_binary(argv[1], phi);
+    rho_bar = read_rho_bar(argv[2]);
+    beta = calc_beta(rho_bar);
   } else {
     phi_zero(phi);
   }
@@ -66,11 +115,11 @@ int main(int argc, char **arg){
   for(i=0;i<N;i++){
     for(j=0;j<N;j++){
       for(k=0;k<N;k++){
-        double x = (i+0.5)*dx;
-        double y = (j+0.5)*dx;
-        double z = (k+0.5)*dx;
+	double x = (i+0.5)*dx;
+	double y = (j+0.5)*dx;
+	double z = (k+0.5)*dx;
 
-        U0[i][j][k] = initial_wave(x, y, z);
+	U0[i][j][k] = initial_wave(x, y, z, sigma);
       }
     }
   }
@@ -78,16 +127,16 @@ int main(int argc, char **arg){
   for(i=0; i<N; i++){
     for(j=0; j<N; j++){
       for(k=0; k<N; k++){
-        A[i][j][k] = 1.0/(1.0-4.0*phi[i][j][k])*(nu_cfl*nu_cfl);
+	A[i][j][k] = 1.0/(1.0-4.0*beta*phi[i][j][k])*(nu_cfl*nu_cfl);
 
-        int ip = i+1 > N-1 ? i+1-N : i+1;
-        int im = i-1 < 0 ? i-1+N : i-1;
-        int jp = j+1 > N-1 ? j+1-N : j+1;
-        int jm = j-1 < 0 ? j-1+N : j-1;
-        int kp = k+1 > N-1 ? k+1-N : k+1;
-        int km = k-1<0 ? k-1+N : k-1;
-        U1[i][j][k] = U0[i][j][k] + 0.5 * A[i][j][k] * (U0[ip][j][k] + U0[im][j][k] + U0[i][jp][k] + U0[i][jm][k] + U0[i][j][kp] + U0[i][j][km] - 6.0 * U0[i][j][k]);
-        //U1[i] = U0[i];
+	int ip = i+1 > N-1 ? i+1-N : i+1;
+	int im = i-1 < 0 ? i-1+N : i-1;
+	int jp = j+1 > N-1 ? j+1-N : j+1;
+	int jm = j-1 < 0 ? j-1+N : j-1;
+	int kp = k+1 > N-1 ? k+1-N : k+1;
+	int km = k-1<0 ? k-1+N : k-1;
+	U1[i][j][k] = U0[i][j][k] + 0.5 * A[i][j][k] * (U0[ip][j][k] + U0[im][j][k] + U0[i][jp][k] + U0[i][jm][k] + U0[i][j][kp] + U0[i][j][km] - 6.0 * U0[i][j][k]);
+	//U1[i] = U0[i];
       }
     }
   }
@@ -104,30 +153,37 @@ int main(int argc, char **arg){
   while(tnow < tend) {
     for(i=0;i<N;i++){
       for(j=0;j<N;j++){
-        for(k=0;k<N;k++){
-          int ip = i+1 > N-1 ? i+1-N : i+1;
-          int im = i-1 < 0 ? i-1+N : i-1;
-          int jp = j+1 > N-1 ? j+1-N : j+1;
-          int jm = j-1 < 0 ? j-1+N : j-1;
-          int kp = k+1 > N-1 ? k+1-N : k+1;
-          int km = k-1 < 0 ? k-1+N : k-1;
+	for(k=0;k<N;k++){
+	  int ip = i+1 > N-1 ? i+1-N : i+1;
+	  int im = i-1 < 0 ? i-1+N : i-1;
+	  int jp = j+1 > N-1 ? j+1-N : j+1;
+	  int jm = j-1 < 0 ? j-1+N : j-1;
+	  int kp = k+1 > N-1 ? k+1-N : k+1;
+	  int km = k-1 < 0 ? k-1+N : k-1;
 
-          U2[i][j][k] =2.0 * U1[i][j][k] - U0[i][j][k] + A[i][j][k] * (U1[ip][j][k] + U1[im][j][k] + U1[i][jp][k] + U1[i][jm][k] + U1[i][j][kp] + U1[i][j][km] - 6.0 * U1[i][j][k]);
-        }
+	  U2[i][j][k] =2.0 * U1[i][j][k] - U0[i][j][k] + A[i][j][k] * (U1[ip][j][k] + U1[im][j][k] + U1[i][jp][k] + U1[i][jm][k] + U1[i][j][kp] + U1[i][j][km] - 6.0 * U1[i][j][k]);
+	}
       }
     }
 
     for(i=0;i<N;i++){
       for(j=0;j<N;j++){
-        for(k=0;k<N;k++){
-          U0[i][j][k] = U1[i][j][k];
-          U1[i][j][k] = U2[i][j][k];
-        }
+	for(k=0;k<N;k++){
+	  U0[i][j][k] = U1[i][j][k];
+	  U1[i][j][k] = U2[i][j][k];
+	}
       }
     }
 
     tnow += dt;
     istep += 1;
+
+    if(istep%128==0) {
+      char binary_name[120];
+
+      sprintf(binary_name, "wave_binary/wave_step%04d.bin", istep);
+      output_wave_binary(binary_name, U2);
+    }
 
     if(istep%5==0) {
       FILE *fp;
@@ -136,11 +192,11 @@ int main(int argc, char **arg){
       sprintf(name, "wave_slices/wave_slice-%03d.dat", istep);
       fp = fopen(name, "w");
       for(i=0;i<N;i++) {
-        for(j=0;j<N;j++) {
-          fprintf(fp, "%12.4e %12.4e %12.4e\n",
-                  dx*(double)i, dx*(double)j, U2[i][j][kmid]);
-        }
-        fprintf(fp, "\n");
+	for(j=0;j<N;j++) {
+	  fprintf(fp, "%12.4e %12.4e %12.4e\n",
+		  dx*(double)i, dx*(double)j, U2[i][j][kmid]);
+	}
+	fprintf(fp, "\n");
       }
       fclose(fp);
     }
@@ -149,7 +205,7 @@ int main(int argc, char **arg){
   for(i=0;i<N;i++) {
     for(j=0;j<N;j++) {
       fprintf(output_wave_slice, "%12.4e %12.4e %12.4e\n",
-              dx*(double)i, dx*(double)j, U2[i][j][kmid]);
+	      dx*(double)i, dx*(double)j, U2[i][j][kmid]);
     }
     fprintf(output_wave_slice, "\n");
   }
