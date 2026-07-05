@@ -2,12 +2,11 @@
 #include <stdlib.h>
 #include <math.h>
 
-#define N (128)
+#define N (512)
 #define PI (3.141592653589793)
 #define BOXSIZE (2000.0)
 #define GRAVITY_G (4.30091727003628e-9)
 #define SPEED_OF_LIGHT (299792.458)
-#define GRAVITY_G (1.0)
 #define GADGET_UNIT_MASS_IN_MSUN (1.0e10)
 
 double initial_wave(double x, double y, double z, double sigma)
@@ -79,7 +78,7 @@ double calc_beta(double rho_bar)
 
 int main(int argc, char **argv){
   int i, j, k;
-  double nu_cfl = 0.5;
+  double nu_cfl = 0.25;
   double c = 1.0;
   double dx = 1.0 / (double)N;
   double dt = nu_cfl*dx/c;
@@ -87,6 +86,7 @@ int main(int argc, char **argv){
   double tnow = 0.0;
   double tend = 1.0;
   int istep = 0;
+  int jmid = N / 2;
   int kmid = N / 2;
   double sigma = dx;
   double beta = 1.0;
@@ -112,31 +112,33 @@ int main(int argc, char **argv){
     phi_zero(phi);
   }
 
+#pragma omp parallel for collapse(3) schedule(auto) private(i,j,k)
   for(i=0;i<N;i++){
     for(j=0;j<N;j++){
       for(k=0;k<N;k++){
-	double x = (i+0.5)*dx;
-	double y = (j+0.5)*dx;
-	double z = (k+0.5)*dx;
+        double x = (i+0.5)*dx;
+        double y = (j+0.5)*dx;
+        double z = (k+0.5)*dx;
 
-	U0[i][j][k] = initial_wave(x, y, z, sigma);
+        U0[i][j][k] = initial_wave(x, y, z, sigma);
       }
     }
   }
 
+#pragma omp parallel for collapse(3) schedule(auto) private(i,j,k)
   for(i=0; i<N; i++){
     for(j=0; j<N; j++){
       for(k=0; k<N; k++){
-	A[i][j][k] = 1.0/(1.0-4.0*beta*phi[i][j][k])*(nu_cfl*nu_cfl);
+        A[i][j][k] = 1.0/(1.0-4.0*beta*phi[i][j][k])*(nu_cfl*nu_cfl);
 
-	int ip = i+1 > N-1 ? i+1-N : i+1;
-	int im = i-1 < 0 ? i-1+N : i-1;
-	int jp = j+1 > N-1 ? j+1-N : j+1;
-	int jm = j-1 < 0 ? j-1+N : j-1;
-	int kp = k+1 > N-1 ? k+1-N : k+1;
-	int km = k-1<0 ? k-1+N : k-1;
-	U1[i][j][k] = U0[i][j][k] + 0.5 * A[i][j][k] * (U0[ip][j][k] + U0[im][j][k] + U0[i][jp][k] + U0[i][jm][k] + U0[i][j][kp] + U0[i][j][km] - 6.0 * U0[i][j][k]);
-	//U1[i] = U0[i];
+        int ip = i+1 > N-1 ? i+1-N : i+1;
+        int im = i-1 < 0 ? i-1+N : i-1;
+        int jp = j+1 > N-1 ? j+1-N : j+1;
+        int jm = j-1 < 0 ? j-1+N : j-1;
+        int kp = k+1 > N-1 ? k+1-N : k+1;
+        int km = k-1<0 ? k-1+N : k-1;
+        U1[i][j][k] = U0[i][j][k] + 0.5 * A[i][j][k] * (U0[ip][j][k] + U0[im][j][k] + U0[i][jp][k] + U0[i][jm][k] + U0[i][j][kp] + U0[i][j][km] - 6.0 * U0[i][j][k]);
+        //U1[i] = U0[i];
       }
     }
   }
@@ -148,30 +150,32 @@ int main(int argc, char **argv){
 
 
   FILE *output_wave_slice;
-  output_wave_slice = fopen("wave_slices/wave_slice_final.dat", "w");
+  output_wave_slice = fopen("wave_slices_cfl025/wave_slice_final.dat", "w");
 
   while(tnow < tend) {
+#pragma omp parallel for collapse(3) schedule(auto) private(i,j,k)
     for(i=0;i<N;i++){
       for(j=0;j<N;j++){
-	for(k=0;k<N;k++){
-	  int ip = i+1 > N-1 ? i+1-N : i+1;
-	  int im = i-1 < 0 ? i-1+N : i-1;
-	  int jp = j+1 > N-1 ? j+1-N : j+1;
-	  int jm = j-1 < 0 ? j-1+N : j-1;
-	  int kp = k+1 > N-1 ? k+1-N : k+1;
-	  int km = k-1 < 0 ? k-1+N : k-1;
+        for(k=0;k<N;k++){
+          int ip = i+1 > N-1 ? i+1-N : i+1;
+          int im = i-1 < 0 ? i-1+N : i-1;
+          int jp = j+1 > N-1 ? j+1-N : j+1;
+          int jm = j-1 < 0 ? j-1+N : j-1;
+          int kp = k+1 > N-1 ? k+1-N : k+1;
+          int km = k-1 < 0 ? k-1+N : k-1;
 
-	  U2[i][j][k] =2.0 * U1[i][j][k] - U0[i][j][k] + A[i][j][k] * (U1[ip][j][k] + U1[im][j][k] + U1[i][jp][k] + U1[i][jm][k] + U1[i][j][kp] + U1[i][j][km] - 6.0 * U1[i][j][k]);
-	}
+          U2[i][j][k] =2.0 * U1[i][j][k] - U0[i][j][k] + A[i][j][k] * (U1[ip][j][k] + U1[im][j][k] + U1[i][jp][k] + U1[i][jm][k] + U1[i][j][kp] + U1[i][j][km] - 6.0 * U1[i][j][k]);
+        }
       }
     }
 
+#pragma omp parallel for collapse(3) schedule(auto) private(i,j,k)
     for(i=0;i<N;i++){
       for(j=0;j<N;j++){
-	for(k=0;k<N;k++){
-	  U0[i][j][k] = U1[i][j][k];
-	  U1[i][j][k] = U2[i][j][k];
-	}
+        for(k=0;k<N;k++){
+          U0[i][j][k] = U1[i][j][k];
+          U1[i][j][k] = U2[i][j][k];
+        }
       }
     }
 
@@ -181,35 +185,60 @@ int main(int argc, char **argv){
     if(istep%128==0) {
       char binary_name[120];
 
-      sprintf(binary_name, "wave_binary/wave_step%04d.bin", istep);
+      sprintf(binary_name, "wave_binary_cfl025/wave_step%04d_t%06.4f.bin", istep, tnow);
       output_wave_binary(binary_name, U2);
     }
 
-    if(istep%5==0) {
+    if(istep%128==0) {
       FILE *fp;
+      FILE *fp_line;
       char name[120];
+      char line_name[120];
 
-      sprintf(name, "wave_slices/wave_slice-%03d.dat", istep);
+      sprintf(name, "wave_slices_cfl025/wave_slice-%04d_t%06.4f.dat", istep, tnow);
       fp = fopen(name, "w");
       for(i=0;i<N;i++) {
-	for(j=0;j<N;j++) {
-	  fprintf(fp, "%12.4e %12.4e %12.4e\n",
-		  dx*(double)i, dx*(double)j, U2[i][j][kmid]);
-	}
-	fprintf(fp, "\n");
+        for(j=0;j<N;j++) {
+          fprintf(fp, "%12.4e %12.4e %12.4e\n",
+                  dx*(double)i, dx*(double)j, U2[i][j][kmid]);
+        }
+        fprintf(fp, "\n");
       }
       fclose(fp);
+
+      sprintf(line_name, "wave_slices_cfl025/wave_line-%04d_t%06.4f.dat", istep, tnow);
+      fp_line = fopen(line_name, "w");
+      for(i=0;i<N;i++) {
+        fprintf(fp_line, "%12.4e %12.4e\n",
+                dx*((double)i+0.5), U1[i][jmid][kmid]);
+      }
+      fclose(fp_line);
     }
   }
 
   for(i=0;i<N;i++) {
     for(j=0;j<N;j++) {
       fprintf(output_wave_slice, "%12.4e %12.4e %12.4e\n",
-	      dx*(double)i, dx*(double)j, U2[i][j][kmid]);
+              dx*(double)i, dx*(double)j, U2[i][j][kmid]);
     }
     fprintf(output_wave_slice, "\n");
   }
   fclose(output_wave_slice);
+
+  {
+    FILE *output_wave_line;
+    char final_line_name[128];
+
+    sprintf(final_line_name, "wave_slices_cfl025/wave_line_final.dat");
+    output_wave_line = fopen(final_line_name, "w");
+
+    for(i=0;i<N;i++) {
+      fprintf(output_wave_line, "%12.4e %12.4e\n",
+              dx*((double)i+0.5), U1[i][jmid][kmid]);
+    }
+
+    fclose(output_wave_line);
+  }
 
   free(U0);
   free(U1);
