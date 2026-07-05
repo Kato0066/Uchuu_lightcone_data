@@ -27,7 +27,7 @@ int main(void)
   int kmid = N / 2;
 
   u = malloc(sizeof(double) * N * N * N);
-  fp_out = fopen("peak_velocity.dat", "w");
+  fp_out = fopen("wave_velo.dat", "w");
 
   fprintf(fp_out, "# step t x_peak U_peak velocity\n");
 
@@ -38,7 +38,7 @@ int main(void)
     double velocity = 0.0;
     double t = dt * (double)step;
 
-    sprintf(filename, "wave_binary/wave_step%05d.bin", step);
+    sprintf(filename, "wave_binary/wave_step%04d.bin", step);
     read_wave_binary(filename, u);
 
     for(int i=N/2;i<N;i++) {
