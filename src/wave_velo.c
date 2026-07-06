@@ -21,6 +21,8 @@ int main(void)
   double c = 1.0;
   double dx = 1.0 / (double)N;
   double dt = nu_cfl * dx / c;
+  double r_peak;
+  double rU_peak;
   double x_prev = 0.0;
   double t_prev = 0.0;
   int jmid = N / 2;
@@ -29,16 +31,16 @@ int main(void)
   u = malloc(sizeof(double) * N * N * N);
   fp_out = fopen("wave_velo.dat", "w");
 
-  fprintf(fp_out, "# step t x_peak U_peak velocity\n");
+  fprintf(fp_out, "# step t x_peak r_peak U_peak rU_peak velocity \n");
 
   for(int step=128;step<=1024;step+=128) {
-    char filename[64];
+    char filename[120];
     double max_u = -INFINITY;
     double x_peak = 0.0;
     double velocity = 0.0;
     double t = dt * (double)step;
 
-    sprintf(filename, "wave_binary/wave_step%04d.bin", step);
+    sprintf(filename, "wave_binary_cfl025/wave_step%04d.bin", step);
     read_wave_binary(filename, u);
 
     for(int i=N/2;i<N;i++) {
@@ -52,8 +54,11 @@ int main(void)
       velocity = (x_peak - x_prev) / (t - t_prev);
     }
 
-    fprintf(fp_out, "%d %14.6e %14.6e %14.6e %14.6e\n",
-            step, t, x_peak, max_u, velocity);
+    r_peak = x_peak - 0.5;
+    rU_peak = r_peak * max_u;
+
+    fprintf(fp_out, "%d %14.6e %14.6e %14.6e  %14.6e %14.6e %14.6e\n",
+            step, t, x_peak, r_peak, max_u, rU_peak, velocity);
 
     x_prev = x_peak;
     t_prev = t;
