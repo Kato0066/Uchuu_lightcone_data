@@ -32,41 +32,41 @@ int main(int argc, char **argv)
 
   for(int m=0;m<NSTEP;m++) {
     fprintf(fp, "x %14.6e %14.6e\n", dx * (double)m, u[ic + m][jc][kc]);
-}
-fprintf(fp, "\n");
+  }
+  fprintf(fp, "\n");
 
-for(int m=0;m<NSTEP;m++) {
-  fprintf(fp, "y %14.6e %14.6e\n", dx * (double)m, u[ic][jc + m][kc]);
- }
-fprintf(fp, "\n");
+  for(int m=0;m<NSTEP;m++) {
+    fprintf(fp, "y %14.6e %14.6e\n", dx * (double)m, u[ic][jc + m][kc]);
+  }
+  fprintf(fp, "\n");
 
-for(int m=0;m<NSTEP;m++) {
-  fprintf(fp, "z %14.6e %14.6e\n", dx * (double)m, u[ic][jc][kc + m]);
- }
-fprintf(fp, "\n");
+  for(int m=0;m<NSTEP;m++) {
+    fprintf(fp, "z %14.6e %14.6e\n", dx * (double)m, u[ic][jc][kc + m]);
+  }
+  fprintf(fp, "\n");
 
-for(int m=0;m<NSTEP;m++) {
-  fprintf(fp, "xy %14.6e %14.6e\n", sqrt(2.0) * dx * (double)m, u[ic + m][jc + m][kc]);
- }
-fprintf(fp, "\n");
+  for(int m=0;m<NSTEP;m++) {
+    fprintf(fp, "xy %14.6e %14.6e\n", sqrt(2.0) * dx * (double)m, u[ic + m][jc + m][kc]);
+  }
+  fprintf(fp, "\n");
 
-for(int m=0;m<NSTEP;m++) {
-  fprintf(fp, "xz %14.6e %14.6e\n",sqrt(2.0) * dx * (double)m, u[ic + m][jc][kc + m]);
- }
-fprintf(fp, "\n");
+  for(int m=0;m<NSTEP;m++) {
+    fprintf(fp, "xz %14.6e %14.6e\n",sqrt(2.0) * dx * (double)m, u[ic + m][jc][kc + m]);
+  }
+  fprintf(fp, "\n");
 
-for(int m=0;m<NSTEP;m++) {
-  fprintf(fp, "yz %14.6e %14.6e\n",sqrt(2.0) * dx * (double)m, u[ic][jc + m][kc + m]);
- }
-fprintf(fp, "\n");
+  for(int m=0;m<NSTEP;m++) {
+    fprintf(fp, "yz %14.6e %14.6e\n",sqrt(2.0) * dx * (double)m, u[ic][jc + m][kc + m]);
+  }
+  fprintf(fp, "\n");
 
-for(int m=0;m<NSTEP;m++) {
-  fprintf(fp, "xyz %14.6e %14.6e\n", sqrt(3.0) * dx * (double)m, u[ic + m][jc + m][kc + m]);
- }
-fprintf(fp, "\n");
+  for(int m=0;m<NSTEP;m++) {
+    fprintf(fp, "xyz %14.6e %14.6e\n", sqrt(3.0) * dx * (double)m, u[ic + m][jc + m][kc + m]);
+  }
+  fprintf(fp, "\n");
 
-fclose(fp);
-free(u);
+  fclose(fp);
+  free(u);
 
-return 0;
+  return 0;
 }

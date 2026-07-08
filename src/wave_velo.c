@@ -9,6 +9,11 @@ void read_wave_binary(const char *filename, double u[N][N][N])
   FILE *fp;
 
   fp = fopen(filename, "rb");
+  if(fp == NULL) {
+    fprintf(stderr, "cannot open %s\n", filename);
+    exit(1);
+  }
+
   fread(&u[0][0][0], sizeof(double), N*N*N, fp);
   fclose(fp);
 }
@@ -17,7 +22,7 @@ int main(void)
 {
   double (*u)[N][N];
   FILE *fp_out;
-  double nu_cfl = 0.5;
+  double nu_cfl = 0.25;
   double c = 1.0;
   double dx = 1.0 / (double)N;
   double dt = nu_cfl * dx / c;
@@ -33,14 +38,14 @@ int main(void)
 
   fprintf(fp_out, "# step t x_peak r_peak U_peak rU_peak velocity \n");
 
-  for(int step=128;step<=1024;step+=128) {
+  for(int step=128;step<=2048;step+=128) {
     char filename[120];
     double max_u = -INFINITY;
     double x_peak = 0.0;
     double velocity = 0.0;
     double t = dt * (double)step;
 
-    sprintf(filename, "wave_binary_cfl025/wave_step%04d.bin", step);
+    sprintf(filename, "wave_binary_cfl025/wave_step%04d_t%06.4f.bin", step, t);
     read_wave_binary(filename, u);
 
     for(int i=N/2;i<N;i++) {

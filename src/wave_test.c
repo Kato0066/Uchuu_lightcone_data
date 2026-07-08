@@ -9,19 +9,20 @@
 #define SPEED_OF_LIGHT (299792.458)
 #define GADGET_UNIT_MASS_IN_MSUN (1.0e10)
 
-double initial_wave(double x, double y, double z, double sigma)
+double initial_wave(double x, double y, double z, double t, double c, double sigma)
 {
+  double xc = 0.5;
+  double yc = 0.5;
+  double zc = 0.5;
+  double r0 = 0.05;
 
-  return exp(-0.5/(sigma*sigma)*((x-0.5)*(x-0.5)
-                                 + (y-0.5)*(y-0.5)
-                                 + (z-0.5)*(z-0.5)));
+  double r = sqrt((x-xc)*(x-xc) + (y-yc)*(y-yc) + (z-zc)*(z-zc));
 
-#if 0
-  (void)y;
-  (void)z;
+  if(r < 1.0e-12) return 0.0;
 
-  return sin(2.0 * PI * x);
-#endif
+  return (r0/r) * exp(-0.5 * (r - r0 - c*t) * (r - r0 - c*t) / (sigma * sigma));
+
+
 }
 
 void phi_zero(double phi[N][N][N])
@@ -88,7 +89,7 @@ int main(int argc, char **argv){
   int istep = 0;
   int jmid = N / 2;
   int kmid = N / 2;
-  double sigma = dx;
+  double sigma = 5*dx;
   double beta = 1.0;
   double rho_bar = 0.0;
 
@@ -120,11 +121,13 @@ int main(int argc, char **argv){
         double y = (j+0.5)*dx;
         double z = (k+0.5)*dx;
 
-        U0[i][j][k] = initial_wave(x, y, z, sigma);
+        U0[i][j][k] = initial_wave(x, y, z, 0.0, c, sigma);
+        U1[i][j][k] = initial_wave(x, y, z, dt, c, sigma);
       }
     }
   }
 
+#if 0
 #pragma omp parallel for collapse(3) schedule(auto) private(i,j,k)
   for(i=0; i<N; i++){
     for(j=0; j<N; j++){
@@ -143,7 +146,7 @@ int main(int argc, char **argv){
     }
   }
 
-#if 0
+
   printf("tendの値を入力してください。\n");
   scanf("%lf", &tend);
 #endif
@@ -157,6 +160,8 @@ int main(int argc, char **argv){
     for(i=0;i<N;i++){
       for(j=0;j<N;j++){
         for(k=0;k<N;k++){
+          A[i][j][k] = 1.0/(1.0-4.0*beta*phi[i][j][k])*(nu_cfl*nu_cfl);
+
           int ip = i+1 > N-1 ? i+1-N : i+1;
           int im = i-1 < 0 ? i-1+N : i-1;
           int jp = j+1 > N-1 ? j+1-N : j+1;
