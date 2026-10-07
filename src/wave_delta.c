@@ -11,7 +11,7 @@
 #define GADGET_UNIT_MASS_IN_MSUN (1.0e10)
 
 #define WAVE_AMPLITUDE (1.0)
-#define WAVE_NUMBER (8.0)
+#define WAVE_NUMBER (4.0)
 
 double complex source_E(double x, double y, double z, double t,
                         double c, double normalized_phi)
