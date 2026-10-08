@@ -11,15 +11,15 @@
 #define GADGET_UNIT_MASS_IN_MSUN (1.0e10)
 
 #define WAVE_AMPLITUDE (1.0)
-#define WAVE_NUMBER (4.0)
 
-double complex source_E(double x, double y, double z, double t,
-                        double c, double normalized_phi)
+
+double source_E(double x, double y, double z, double t,
+                double c, double normalized_phi)
 {
   double xs = 0.5;
   double ys = 0.5;
   double zs = 0.5;
-  double wave_number = 2.0 * PI * WAVE_NUMBER;
+  double wave_number = 100.0 * PI;
   double omega = c * wave_number;
 
   double r = sqrt((x-xs)*(x-xs)
@@ -29,7 +29,7 @@ double complex source_E(double x, double y, double z, double t,
   if(r < 1.0e-12) return 0.0;
 
   return 4.0 * WAVE_AMPLITUDE * omega * omega * normalized_phi / r
-    * cexp(I * (wave_number * r - omega * t));
+    * cos(wave_number * r - omega * t);
 }
 
 void phi_zero(double phi[N][N][N])
@@ -52,7 +52,7 @@ void read_potential_binary(const char *filename, double phi[N][N][N])
   fclose(fp);
 }
 
-void output_D_binary(const char *filename, double complex D[N][N][N])
+void output_D_binary(const char *filename, double D[N][N][N])
 {
   FILE *fp;
 
@@ -91,22 +91,22 @@ int main(int argc, char **argv){
   double dx = 1.0 / (double)N;
   double dt = nu_cfl*dx/c;
   double tnow = dt;
-  double tend = 1.0;
+  double tend = 0.04;
   int istep = 1;
   int jmid = N / 2;
   int kmid = N / 2;
   double beta = 1.0;
   double rho_bar = 0.0;
 
-  double complex (*D0)[N][N];
-  double complex (*D1)[N][N];
-  double complex (*D2)[N][N];
+  double (*D0)[N][N];
+  double (*D1)[N][N];
+  double (*D2)[N][N];
   double (*phi)[N][N];
   double (*B)[N][N];
 
-  D0 = malloc(sizeof(double complex) * N * N * N);
-  D1 = malloc(sizeof(double complex) * N * N * N);
-  D2 = malloc(sizeof(double complex) * N * N * N);
+  D0 = malloc(sizeof(double) * N * N * N);
+  D1 = malloc(sizeof(double) * N * N * N);
+  D2 = malloc(sizeof(double) * N * N * N);
   phi = malloc(sizeof(double) * N * N * N);
   B = malloc(sizeof(double) * N * N * N);
 
@@ -122,8 +122,8 @@ int main(int argc, char **argv){
   for(i=0;i<N;i++){
     for(j=0;j<N;j++){
       for(k=0;k<N;k++){
-        D0[i][j][k] = 0.0 + 0.0 * I;
-        D1[i][j][k] = 0.0 + 0.0 * I;
+        D0[i][j][k] = 0.0;
+        D1[i][j][k] = 0.0;
       }
     }
   }
@@ -140,7 +140,7 @@ int main(int argc, char **argv){
           double y = (j+0.5)*dx;
           double z = (k+0.5)*dx;
           double normalized_phi = beta*phi[i][j][k];
-          double complex E = source_E(x, y, z, tnow, c, normalized_phi);
+          double E = source_E(x, y, z, tnow, c, normalized_phi);
 
           B[i][j][k] = 1.0/(1.0-4.0*normalized_phi)
             *(nu_cfl*nu_cfl);
@@ -175,6 +175,9 @@ int main(int argc, char **argv){
 
     tnow += dt;
     istep += 1;
+
+    printf("# step %d: tau = %.8e\n",istep, tnow);
+    fflush(stdout);
 
     if(istep%128==0) {
       char binary_name[120];
@@ -222,10 +225,9 @@ int main(int argc, char **argv){
 
   for(i=0;i<N;i++) {
     for(j=0;j<N;j++) {
-      fprintf(output_D_slice, "%12.4e %12.4e %12.4e %12.4e\n",
+      fprintf(output_D_slice, "%12.4e %12.4e %12.4e\n",
               dx*((double)i+0.5), dx*((double)j+0.5),
-              creal(D2[i][j][kmid]),
-              cimag(D2[i][j][kmid]));
+              D2[i][j][kmid]);
     }
     fprintf(output_D_slice, "\n");
   }
@@ -239,10 +241,9 @@ int main(int argc, char **argv){
     output_D_line = fopen(final_line_name, "w");
 
     for(i=0;i<N;i++) {
-      fprintf(output_D_line, "%12.4e %12.4e %12.4e\n",
+      fprintf(output_D_line, "%12.4e %12.4e\n",
               dx*((double)i+0.5),
-              creal(D1[i][jmid][kmid]),
-              cimag(D1[i][jmid][kmid]));
+              D1[i][jmid][kmid]);
     }
 
     fclose(output_D_line);
