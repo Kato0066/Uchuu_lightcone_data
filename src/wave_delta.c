@@ -57,7 +57,7 @@ void output_D_binary(const char *filename, double D[N][N][N])
   FILE *fp;
 
   fp = fopen(filename, "wb");
-  fwrite(&D[0][0][0], sizeof(double complex), N*N*N, fp);
+  fwrite(&D[0][0][0], sizeof(double), N*N*N, fp);
   fclose(fp);
 }
 
@@ -176,8 +176,10 @@ int main(int argc, char **argv){
     tnow += dt;
     istep += 1;
 
-    printf("# step %d: tau = %.8e\n",istep, tnow);
-    fflush(stdout);
+    if(istep%10==0 || tnow>=tend) {
+      printf("# step %d: tau = %.8e\n", istep, tnow);
+      fflush(stdout);
+    }
 
     if(istep%128==0) {
       char binary_name[120];
@@ -188,7 +190,7 @@ int main(int argc, char **argv){
       output_D_binary(binary_name, D2);
     }
 
-    if(istep%128==0) {
+    if(istep%4==0) {
       FILE *fp;
       FILE *fp_line;
       char name[120];
@@ -200,10 +202,9 @@ int main(int argc, char **argv){
       fp = fopen(name, "w");
       for(i=0;i<N;i++) {
         for(j=0;j<N;j++) {
-          fprintf(fp, "%12.4e %12.4e %12.4e %12.4e\n",
+          fprintf(fp, "%12.4e %12.4e %12.4e\n",
                   dx*(double)i, dx*(double)j,
-                  creal(D2[i][j][kmid]),
-                  cimag(D2[i][j][kmid]));
+                  D2[i][j][kmid]);
         }
         fprintf(fp, "\n");
       }
@@ -214,10 +215,9 @@ int main(int argc, char **argv){
               istep, tnow);
       fp_line = fopen(line_name, "w");
       for(i=0;i<N;i++) {
-        fprintf(fp_line, "%12.4e %12.4e %12.4e\n",
+        fprintf(fp_line, "%12.4e %12.4e\n",
                 dx*((double)i+0.5),
-                creal(D1[i][jmid][kmid]),
-                cimag(D1[i][jmid][kmid]));
+                D1[i][jmid][kmid]);
       }
       fclose(fp_line);
     }
@@ -226,8 +226,8 @@ int main(int argc, char **argv){
   for(i=0;i<N;i++) {
     for(j=0;j<N;j++) {
       fprintf(output_D_slice, "%12.4e %12.4e %12.4e\n",
-              dx*((double)i+0.5), dx*((double)j+0.5),
-              D2[i][j][kmid]);
+	      dx*((double)i+0.5), dx*((double)j+0.5),
+	      D2[i][j][kmid]);
     }
     fprintf(output_D_slice, "\n");
   }
@@ -242,8 +242,8 @@ int main(int argc, char **argv){
 
     for(i=0;i<N;i++) {
       fprintf(output_D_line, "%12.4e %12.4e\n",
-              dx*((double)i+0.5),
-              D1[i][jmid][kmid]);
+	      dx*((double)i+0.5),
+	      D1[i][jmid][kmid]);
     }
 
     fclose(output_D_line);
