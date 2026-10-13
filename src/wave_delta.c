@@ -118,7 +118,6 @@ int main(int argc, char **argv){
   double (*D1)[N][N];
   double (*D2)[N][N];
   double (*phi)[N][N];
-  double (*B)[N][N];
   double (*F00)[N][N];
   double (*F01)[N][N];
   double (*F02)[N][N];
@@ -127,7 +126,6 @@ int main(int argc, char **argv){
   D1 = malloc(sizeof(double) * N * N * N);
   D2 = malloc(sizeof(double) * N * N * N);
   phi = malloc(sizeof(double) * N * N * N);
-  B = malloc(sizeof(double) * N * N * N);
   F00 = malloc(sizeof(double) * N * N * N);
   F01 = malloc(sizeof(double) * N * N * N);
   F02 = malloc(sizeof(double) * N * N * N);
@@ -231,7 +229,7 @@ int main(int argc, char **argv){
       sprintf(binary_name,
               "D_binary_cfl025/D_step%04d_t%06.4f.bin",
               istep, tnow);
-      output_D_binary(binary_name, D2);
+      output_D_binary(binary_name, D1);
     }
 
     if(istep%128==0) {
@@ -250,7 +248,7 @@ int main(int argc, char **argv){
         for(j=0;j<N;j++) {
           fprintf(fp, "%12.4e %12.4e %12.4e\n",
                   dx*((double)i+0.5), dx*((double)j+0.5),
-                  D2[i][j][kmid]);
+                  D1[i][j][kmid]);
         }
         fprintf(fp, "\n");
       }
@@ -275,7 +273,7 @@ int main(int argc, char **argv){
         for(j=0;j<N;j++) {
           fprintf(fp_F0, "%12.4e %12.4e %12.4e\n",
                   dx*((double)i+0.5), dx*((double)j+0.5),
-                  F02[i][j][kmid]);
+                  F01[i][j][kmid]);
         }
         fprintf(fp_F0, "\n");
       }
@@ -313,7 +311,6 @@ int main(int argc, char **argv){
   free(D1);
   free(D2);
   free(phi);
-  free(B);
   free(F00);
   free(F01);
   free(F02);
