@@ -12,17 +12,19 @@
 
 #define WAVE_AMPLITUDE (1.0)
 
-
 double source_Q(int i, int j, int k, double t,
                 double c, double dx)
 {
-  int ic = N/2;
+  int ic1 = N/2 - 1;
+  int ic2 = N/2;
   double wave_number = 100.0 * PI;
   double omega = c * wave_number;
-  double T = 4.0 * PI * WAVE_AMPLITUDE * cos(omega * t);
+  double T = WAVE_AMPLITUDE * cos(omega * t);
 
-  if(i == ic && j == ic && k == ic) {
-    return T / (dx * dx * dx);
+  if((i == ic1 || i == ic2)
+     && (j == ic1 || j == ic2)
+     && (k == ic1 || k == ic2)) {
+    return T / (8.0 * dx * dx * dx);
   }
 
   return 0.0;
@@ -140,6 +142,10 @@ int main(int argc, char **argv){
 
   output_phi_slice("D_slices_cfl025/phi_slice.dat",
                    phi, kmid, dx, beta);
+  printf("# rho_bar = %.8e\n", rho_bar);
+  printf("# beta = %.8e\n", beta);
+  printf("# normalized phi at source = %.8e\n",
+         beta*phi[N/2][N/2][N/2]);
 
 #pragma omp parallel for collapse(3) schedule(auto) private(i,j,k)
   for(i=0;i<N;i++){
@@ -162,9 +168,7 @@ int main(int argc, char **argv){
       for(j=0;j<N;j++){
         for(k=0;k<N;k++){
           double normalized_phi = beta*phi[i][j][k];
-
-          B[i][j][k] = 1.0/(1.0-4.0*normalized_phi)
-            *(nu_cfl*nu_cfl);
+          double denominator = 1.0 - 4.0 * normalized_phi;
 
           int ip = i+1 > N-1 ? i+1-N : i+1;
           int im = i-1 < 0 ? i-1+N : i-1;
@@ -189,16 +193,13 @@ int main(int argc, char **argv){
           F02[i][j][k] = 2.0 * F01[i][j][k] - F00[i][j][k]
             + dt*dt*S;
 
-          B[i][j][k] = 1.0/(1.0-4.0*normalized_phi)
-            *(nu_cfl*nu_cfl);
-
           D2[i][j][k] = 2.0 * D1[i][j][k] - D0[i][j][k]
-            + B[i][j][k]
+            + dt*dt/(denominator*dx*dx)
             * (D1[ip][j][k] + D1[im][j][k]
                + D1[i][jp][k] + D1[i][jm][k]
                + D1[i][j][kp] + D1[i][j][km]
                - 6.0 * D1[i][j][k])
-            + dt*dt/(1.0-4.0*normalized_phi)
+            + dt*dt/denominator
             * 4.0*normalized_phi*S;
         }
       }
