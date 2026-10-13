@@ -91,7 +91,7 @@ int main(int argc, char **argv){
   double dx = 1.0 / (double)N;
   double dt = nu_cfl*dx/c;
   double tnow = dt;
-  double tend = 0.04;
+  double tend = 1.0;
   int istep = 1;
   int jmid = N / 2;
   int kmid = N / 2;
@@ -176,7 +176,7 @@ int main(int argc, char **argv){
     tnow += dt;
     istep += 1;
 
-    if(istep%10==0 || tnow>=tend) {
+    if(istep%100==0 || tnow>=tend) {
       printf("# step %d: tau = %.8e\n", istep, tnow);
       fflush(stdout);
     }
@@ -190,7 +190,7 @@ int main(int argc, char **argv){
       output_D_binary(binary_name, D2);
     }
 
-    if(istep%4==0) {
+    if(istep%128==0) {
       FILE *fp;
       FILE *fp_line;
       char name[120];
@@ -203,7 +203,7 @@ int main(int argc, char **argv){
       for(i=0;i<N;i++) {
         for(j=0;j<N;j++) {
           fprintf(fp, "%12.4e %12.4e %12.4e\n",
-                  dx*(double)i, dx*(double)j,
+                  dx*((double)i+0.5), dx*((double)j+0.5),
                   D2[i][j][kmid]);
         }
         fprintf(fp, "\n");
@@ -226,8 +226,8 @@ int main(int argc, char **argv){
   for(i=0;i<N;i++) {
     for(j=0;j<N;j++) {
       fprintf(output_D_slice, "%12.4e %12.4e %12.4e\n",
-	      dx*((double)i+0.5), dx*((double)j+0.5),
-	      D2[i][j][kmid]);
+              dx*((double)i+0.5), dx*((double)j+0.5),
+              D2[i][j][kmid]);
     }
     fprintf(output_D_slice, "\n");
   }
@@ -242,8 +242,8 @@ int main(int argc, char **argv){
 
     for(i=0;i<N;i++) {
       fprintf(output_D_line, "%12.4e %12.4e\n",
-	      dx*((double)i+0.5),
-	      D1[i][jmid][kmid]);
+              dx*((double)i+0.5),
+              D1[i][jmid][kmid]);
     }
 
     fclose(output_D_line);
