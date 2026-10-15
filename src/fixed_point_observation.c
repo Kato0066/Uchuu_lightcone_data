@@ -10,10 +10,18 @@
 #define GADGET_UNIT_MASS_IN_MSUN (1.0e10)
 #define WAVE_AMPLITUDE (1.0)
 
-#define OBS_X (0.75)
-#define OBS_Y (0.5)
-#define OBS_Z (0.5)
+#define NOBS (8)
 
+static const double OBS_POS[NOBS][3] = {
+  {0.60,   0.50,   0.50},
+  {0.70,   0.50,   0.50},
+  {0.80,   0.50,   0.50},
+  {0.90,   0.50,   0.50},
+  {0.50,   0.70,   0.50},
+  {0.50,   0.50,   0.70},
+  {0.6414, 0.6414, 0.50},
+  {0.6155, 0.6155, 0.6155}
+};
 
 double source_Q(int i, int j, int k, double t,
                 double c, double dx)
@@ -33,12 +41,12 @@ double source_Q(int i, int j, int k, double t,
   return 0.0;
 }
 
-void phi_zero(double phi[N][N][N])
+void phi_const(double phi[N][N][N])
 {
   for(int i=0;i<N;i++){
     for(int j=0;j<N;j++){
       for(int k=0;k<N;k++){
-	phi[i][j][k] = 0.0;
+        phi[i][j][k] = 0.00;
       }
     }
   }
@@ -87,14 +95,16 @@ int main(int argc, char **argv){
   int istep = 1;
   double beta = 1.0;
   double rho_bar = 0.0;
+  const char *output_dir = "phi_const_001";
+  char observer_filename[512];
 
-  /* 指定した座標に最も近いセルを観測点にする。 */
-  int iobs = (int)(OBS_X / dx);
-  int jobs = (int)(OBS_Y / dx);
-  int kobs = (int)(OBS_Z / dx);
-  double xobs;
-  double yobs;
-  double zobs;
+  int iobs[NOBS];
+  int jobs[NOBS];
+  int kobs[NOBS];
+  double xobs[NOBS];
+  double yobs[NOBS];
+  double zobs[NOBS];
+  double robs[NOBS];
   FILE *fp_observer;
 
   double (*D0)[N][N];
@@ -113,13 +123,19 @@ int main(int argc, char **argv){
   F01 = malloc(sizeof(double) * N * N * N);
   F02 = malloc(sizeof(double) * N * N * N);
 
-  if(argc == 3) {
-    read_potential_binary(argv[1], phi);
-    rho_bar = read_rho_bar(argv[2]);
+  if(argc == 1) {
+    phi_const(phi);
+  } else if(argc == 2) {
+    output_dir = argv[1];
+    phi_const(phi);
+  } else if(argc == 4) {
+    output_dir = argv[1];
+    read_potential_binary(argv[2], phi);
+    rho_bar = read_rho_bar(argv[3]);
     beta = calc_beta(rho_bar);
-  } else {
-    phi_zero(phi);
   }
+  snprintf(observer_filename, sizeof(observer_filename),
+           "%s/fixed_point.dat", output_dir);
 
   printf("# rho_bar = %.8e\n", rho_bar);
   printf("# beta = %.8e\n", beta);
@@ -138,41 +154,54 @@ int main(int argc, char **argv){
     }
   }
 
-  if(iobs < 0 || iobs >= N
-     || jobs < 0 || jobs >= N
-     || kobs < 0 || kobs >= N) {
-    fprintf(stderr,
-            "OBS_X, OBS_Y and OBS_Z must satisfy 0 <= OBS_* < 1\n");
-    return 1;
-  }
+  for(int n=0; n<NOBS; n++) {
+    iobs[n] = (int)(OBS_POS[n][0] / dx);
+    jobs[n] = (int)(OBS_POS[n][1] / dx);
+    kobs[n] = (int)(OBS_POS[n][2] / dx);
 
-  xobs = dx*((double)iobs + 0.5);
-  yobs = dx*((double)jobs + 0.5);
-  zobs = dx*((double)kobs + 0.5);
+
+    xobs[n] = dx*((double)iobs[n] + 0.5);
+    yobs[n] = dx*((double)jobs[n] + 0.5);
+    zobs[n] = dx*((double)kobs[n] + 0.5);
+
+    robs[n] = sqrt(
+                   (xobs[n]-0.5)*(xobs[n]-0.5)
+                   + (yobs[n]-0.5)*(yobs[n]-0.5)
+                   + (zobs[n]-0.5)*(zobs[n]-0.5));
+  }
 
   fp_observer = fopen("fixed_point.dat", "w");
-  if(fp_observer == NULL) {
-    fprintf(stderr, "cannot open fixed-point output file\n");
-    return 1;
+
+  fprintf(fp_observer,
+          "# 1:tau 2:id 3:x 4:y 5:z 6:r "
+          "7:F0 8:D 9:normalized_phi 10:F=F0+D\n");
+
+  for(int n=0; n<NOBS; n++) {
+    fprintf(fp_observer,
+            "# observer %d: index=(%d,%d,%d), "
+            "position=(%.8e,%.8e,%.8e), r=%.8e\n",
+            n, iobs[n], jobs[n], kobs[n],
+            xobs[n], yobs[n], zobs[n], robs[n]);
+
+    printf("# observer %d: index=(%d,%d,%d), "
+           "position=(%.8e,%.8e,%.8e), r=%.8e\n",
+           n, iobs[n], jobs[n], kobs[n],
+           xobs[n], yobs[n], zobs[n], robs[n]);
   }
 
-  fprintf(fp_observer, "# x = %.8e\n", xobs);
-  fprintf(fp_observer, "# y = %.8e\n", yobs);
-  fprintf(fp_observer, "# z = %.8e\n", zobs);
-  fprintf(fp_observer, "# normalized_phi = %.8e\n",
-          beta*phi[iobs][jobs][kobs]);
-  fprintf(fp_observer,
-          "# 1:tau 2:x 3:y 4:z 5:F0 6:D 7:normalized_phi\n");
-  fprintf(fp_observer,
-          "%14.6e %14.6e %14.6e %14.6e "
-          "%14.6e %14.6e %14.6e\n",
-          tnow, xobs, yobs, zobs,
-          F01[iobs][jobs][kobs],
-          D1[iobs][jobs][kobs],
-          beta*phi[iobs][jobs][kobs]);
-
-  printf("# fixed observer: index=(%d,%d,%d), position=(%.8e,%.8e,%.8e)\n",
-         iobs, jobs, kobs, xobs, yobs, zobs);
+  for(int n=0; n<NOBS; n++) {
+    fprintf(fp_observer,
+            "%14.6e %d "
+            "%14.6e %14.6e %14.6e %14.6e "
+            "%14.6e %14.6e %14.6e %14.6e\n",
+            tnow, n,
+            xobs[n], yobs[n], zobs[n], robs[n],
+            F01[iobs[n]][jobs[n]][kobs[n]],
+            D1[iobs[n]][jobs[n]][kobs[n]],
+            beta*phi[iobs[n]][jobs[n]][kobs[n]],
+            F01[iobs[n]][jobs[n]][kobs[n]]
+            + D1[iobs[n]][jobs[n]][kobs[n]]);
+  }
 
   while(tnow < tend) {
 #pragma omp parallel for collapse(3) schedule(auto) private(i,j,k)
@@ -232,14 +261,19 @@ int main(int argc, char **argv){
     tnow += dt;
     istep += 1;
 
-    /* 観測点の時間発展を毎ステップ記録する。 */
-    fprintf(fp_observer,
-            "%14.6e %14.6e %14.6e %14.6e "
-            "%14.6e %14.6e %14.6e\n",
-            tnow, xobs, yobs, zobs,
-            F01[iobs][jobs][kobs],
-            D1[iobs][jobs][kobs],
-            beta*phi[iobs][jobs][kobs]);
+    for(int n=0; n<NOBS; n++) {
+      fprintf(fp_observer,
+              "%14.6e %d "
+              "%14.6e %14.6e %14.6e %14.6e "
+              "%14.6e %14.6e %14.6e %14.6e\n",
+              tnow, n,
+              xobs[n], yobs[n], zobs[n], robs[n],
+              F01[iobs[n]][jobs[n]][kobs[n]],
+              D1[iobs[n]][jobs[n]][kobs[n]],
+              beta*phi[iobs[n]][jobs[n]][kobs[n]],
+              F01[iobs[n]][jobs[n]][kobs[n]]
+              + D1[iobs[n]][jobs[n]][kobs[n]]);
+    }
 
     if(istep%100==0 || tnow>=tend) {
       printf("# step %d: tau = %.8e\n", istep, tnow);
